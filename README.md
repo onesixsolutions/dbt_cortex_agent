@@ -53,7 +53,10 @@ tools:
       name: revenue_analyst
 tool_resources:
   revenue_analyst:
-    semantic_model: '@my_db.my_schema.my_stage/revenue_model.yaml'
+    execution_environment:
+      type: "warehouse"
+      warehouse: ""
+    semantic_view: 'DATABASE.SCHEMA.SEMANTIC_VIEW'
 ```
 
 Run it:
