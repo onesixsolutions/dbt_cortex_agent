@@ -1,0 +1,13 @@
+name: dbt_cortex_agent
+version: '0.1.0'
+config-version: 2
+
+profile: default
+
+require-dbt-version: [">=1.0.0", "<3.0.0"]
+
+macro-paths: ["macros"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
