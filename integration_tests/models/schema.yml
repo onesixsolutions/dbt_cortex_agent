@@ -1,0 +1,18 @@
+# Copyright 2025 OneSix Solutions
+# SPDX-License-Identifier: Apache-2.0
+
+version: 2
+
+models:
+  - name: cortex_agent_basic
+    description: "Minimal agent with no tools — baseline existence test."
+
+  - name: cortex_agent_with_comment
+    description: "Agent with a comment config — validates comment appears in DDL."
+    config:
+      comment: 'integration test comment'
+
+  - name: cortex_agent_with_profile
+    description: "Agent with a profile config — validates profile appears in DDL."
+    config:
+      profile: '{"display_name": "Integration Test Agent"}'

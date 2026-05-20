@@ -1,0 +1,19 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.1.0] - 2026-05-20
+
+### Added
+- `cortex_agent` materialization for Snowflake Cortex Agents
+- Passthrough YAML specification — model body is sent verbatim to `CREATE OR REPLACE AGENT ... FROM SPECIFICATION`
+- `comment` config option — sets agent-level description visible in Snowflake
+- `profile` config option — JSON string for `display_name`, `avatar`, and `color`
+- `snowflake__create_cortex_agent` macro for DDL generation
+- `snowflake__get_drop_cortex_agent_sql` macro for DROP DDL generation
+- Integration test suite under `integration_tests/`
+- GitHub Actions CI workflow for automated integration testing
+- `scripts/apply_license_headers.py` for Apache 2.0 header enforcement

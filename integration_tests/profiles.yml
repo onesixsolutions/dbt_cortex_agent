@@ -1,0 +1,19 @@
+# Copyright 2025 OneSix Solutions
+# SPDX-License-Identifier: Apache-2.0
+#
+# IMPORTANT: Never hardcode credentials here. All sensitive values must come
+# from environment variables. This file is safe to commit to version control.
+
+integration_tests:
+  target: snowflake
+  outputs:
+    snowflake:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_TEST_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_TEST_USER') }}"
+      password: "{{ env_var('SNOWFLAKE_TEST_PASSWORD') }}"
+      role: "{{ env_var('SNOWFLAKE_TEST_ROLE') }}"
+      database: "{{ env_var('SNOWFLAKE_TEST_DATABASE') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_TEST_WAREHOUSE') }}"
+      schema: "{{ env_var('SNOWFLAKE_TEST_SCHEMA') }}"
+      threads: 4
