@@ -1,6 +1,3 @@
--- Copyright 2025 OneSix Solutions
--- SPDX-License-Identifier: Apache-2.0
---
 -- Custom dbt materialization for Snowflake Cortex Agents.
 -- The model body must be a valid Snowflake agent YAML specification.
 -- The materialization wraps it in CREATE OR REPLACE AGENT ... FROM SPECIFICATION $$ ... $$.
