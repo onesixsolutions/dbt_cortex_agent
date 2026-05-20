@@ -1,8 +1,5 @@
-# Copyright 2025 OneSix Solutions
-# SPDX-License-Identifier: Apache-2.0
-
 name: dbt_cortex_agent_integration_tests
-version: '1.0.0'
+version: "1.0.0"
 config-version: 2
 
 profile: integration_tests

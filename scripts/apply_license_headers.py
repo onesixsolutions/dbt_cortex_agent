@@ -1,5 +1,4 @@
-# Copyright 2025 OneSix Solutions
-# SPDX-License-Identifier: Apache-2.0
+
 #
 # Walks the repository and prepends Apache 2.0 license headers to .py, .sql,
 # and .yml files that don't already contain the SPDX identifier.
@@ -28,8 +27,7 @@ HEADER_SQL = """\
 """
 
 HEADER_YAML = """\
-# Copyright 2025 OneSix Solutions
-# SPDX-License-Identifier: Apache-2.0
+
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
