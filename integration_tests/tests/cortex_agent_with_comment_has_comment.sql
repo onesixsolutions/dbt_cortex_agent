@@ -1,6 +1,3 @@
--- Copyright 2025 OneSix Solutions
--- SPDX-License-Identifier: Apache-2.0
---
 -- Fails if 'integration test comment' is absent from the agent DDL.
 -- Returns 0 rows on success (standard dbt test contract).
 
