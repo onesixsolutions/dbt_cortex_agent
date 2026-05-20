@@ -13,3 +13,11 @@ models:
     description: "Agent with a profile config — validates profile appears in DDL."
     config:
       profile: '{"display_name": "Integration Test Agent"}'
+
+  - name: cortex_agent_full
+    description: "Comprehensive agent exercising every config and spec option — comment, profile, alias, tags, orchestration budget, all instruction fields, both tool types with full input_schema, and tool_resources."
+    config:
+      alias: cortex_agent_full
+      comment: 'Full integration test agent — exercises every config and spec option'
+      profile: '{"display_name": "Full Test Agent", "avatar": "robot", "color": "blue"}'
+      tags: ['integration', 'full']
