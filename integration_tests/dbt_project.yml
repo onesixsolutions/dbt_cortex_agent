@@ -16,3 +16,9 @@ clean-targets:
 models:
   dbt_cortex_agent_integration_tests:
     +schema: INTEGRATION_TESTS
+
+# Override these vars to point at real Snowflake objects in your test environment.
+# Passed via: dbt run --vars '{"test_semantic_view": "DB.SCHEMA.MY_VIEW"}'
+vars:
+  test_semantic_view: "DB.SCHEMA.SEMANTIC_VIEW"
+  test_cortex_search_service: "DB.SCHEMA.SEARCH_SERVICE"
