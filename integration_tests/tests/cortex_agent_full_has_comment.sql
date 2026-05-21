@@ -4,7 +4,7 @@
 select 'comment missing from cortex_agent_full DDL' as error
 where not contains(
   get_ddl(
-    'agent',
+    'cortex_agent',
     '{{ target.database }}.{{ target.schema }}_INTEGRATION_TESTS.CORTEX_AGENT_FULL'
   ),
   'Full integration test agent'

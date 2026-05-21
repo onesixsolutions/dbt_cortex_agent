@@ -6,7 +6,7 @@ select 'agent does not exist' as error
 where (
   select length(
     get_ddl(
-      'agent',
+      'cortex_agent',
       '{{ target.database }}.{{ target.schema }}_INTEGRATION_TESTS.CORTEX_AGENT_BASIC'
     )
   )

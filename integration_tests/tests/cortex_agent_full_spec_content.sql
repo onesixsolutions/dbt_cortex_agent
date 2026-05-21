@@ -7,7 +7,7 @@
 
 with ddl as (
   select get_ddl(
-    'agent',
+    'cortex_agent',
     '{{ target.database }}.{{ target.schema }}_INTEGRATION_TESTS.CORTEX_AGENT_FULL'
   ) as content
 ),
