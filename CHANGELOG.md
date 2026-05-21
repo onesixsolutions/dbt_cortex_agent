@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- `grants` config option — list of role names to grant `USAGE` on the agent after creation
+- `snowflake__grant_cortex_agent_usage` macro for GRANT DDL generation
+
+### Changed
+- Integration test suite consolidated to a single model (`cortex_agent_test`) covering all config and spec options, replacing the previous per-feature models (`cortex_agent_basic`, `cortex_agent_with_comment`, `cortex_agent_with_profile`)
+
 ## [0.1.1] - 2026-05-21
 
 ### Fixed

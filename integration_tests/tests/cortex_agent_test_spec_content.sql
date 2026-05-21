@@ -1,4 +1,4 @@
--- Validates that key spec sections are present in the full agent DDL:
+-- Validates that key spec sections are present in the agent DDL:
 --   - orchestration model name
 --   - token budget
 --   - a sample question
@@ -8,7 +8,7 @@
 with ddl as (
   select get_ddl(
     'cortex_agent',
-    '{{ target.database }}.{{ target.schema }}_INTEGRATION_TESTS.CORTEX_AGENT_FULL'
+    '{{ target.database }}.{{ target.schema }}_INTEGRATION_TESTS.CORTEX_AGENT_TEST'
   ) as content
 ),
 

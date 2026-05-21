@@ -5,11 +5,13 @@
 -- Config options:
 --   comment (string, optional) : agent-level comment visible in Snowflake
 --   profile (string, optional) : JSON object with display_name, avatar, and color
+--   grants  (list,   optional) : list of role names to grant USAGE on the agent
 
 {% materialization cortex_agent, adapter='snowflake' %}
 
   {%- set comment = config.get('comment', default=none) -%}
   {%- set profile = config.get('profile', default=none) -%}
+  {%- set grants  = config.get('grants',  default=[])   -%}
 
   {%- set target_relation = api.Relation.create(
       identifier=this.identifier,
@@ -25,6 +27,12 @@
   {% endcall %}
 
   {{ run_hooks(post_hooks) }}
+
+  {%- if grants | length > 0 %}
+  {% call statement('grants') %}
+    {{ dbt_cortex_agent.snowflake__grant_cortex_agent_usage(target_relation, grants) }}
+  {% endcall %}
+  {%- endif %}
 
   {{ return({'relations': [target_relation]}) }}
 
