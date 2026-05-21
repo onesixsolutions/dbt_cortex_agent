@@ -53,7 +53,7 @@ tools:
 
 tool_resources:
   analyst_tool:
-    semantic_view: '{{ var("test_semantic_view", "DB.SCHEMA.SEMANTIC_VIEW") }}'
+    semantic_view: '{{ ref("test_semantic_view") }}'
   search_tool:
     name: '{{ var("test_cortex_search_service", "DB.SCHEMA.SEARCH_SERVICE") }}'
     max_results: 10
