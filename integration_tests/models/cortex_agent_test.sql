@@ -1,10 +1,11 @@
 {{
     config(
         materialized='cortex_agent',
-        alias='cortex_agent_full',
+        alias='cortex_agent_test',
         comment='Full integration test agent — exercises every config and spec option',
         profile='{"display_name": "Full Test Agent", "avatar": "robot", "color": "blue"}',
-        tags=['integration', 'full']
+        tags=['integration'],
+        agent_grants=['dbt_demo_role']
     )
 }}
 

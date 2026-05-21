@@ -5,25 +5,13 @@ models:
     description: "Minimal base table used by test_semantic_view."
 
   - name: test_semantic_view
-    description: "Minimal semantic view referenced via ref() in cortex_agent_full."
+    description: "Minimal semantic view referenced via ref() in cortex_agent_test."
 
-  - name: cortex_agent_basic
-    description: "Minimal agent with no tools — baseline existence test."
-
-  - name: cortex_agent_with_comment
-    description: "Agent with a comment config — validates comment appears in DDL."
+  - name: cortex_agent_test
+    description: "Comprehensive agent exercising every config and spec option — comment, profile, alias, tags, orchestration budget, all instruction fields, both tool types with full input_schema, tool_resources, and grants."
     config:
-      comment: "integration test comment"
-
-  - name: cortex_agent_with_profile
-    description: "Agent with a profile config — validates profile appears in DDL."
-    config:
-      profile: '{"display_name": "Integration Test Agent"}'
-
-  - name: cortex_agent_full
-    description: "Comprehensive agent exercising every config and spec option — comment, profile, alias, tags, orchestration budget, all instruction fields, both tool types with full input_schema, and tool_resources."
-    config:
-      alias: cortex_agent_full
+      alias: cortex_agent_test
       comment: 'Full integration test agent — exercises every config and spec option'
       profile: '{"display_name": "Full Test Agent", "avatar": "robot", "color": "blue"}'
-      tags: ['integration', 'full']
+      tags: ['integration']
+      agent_grants: ['dbt_demo_role']
