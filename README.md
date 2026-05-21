@@ -56,7 +56,7 @@ tool_resources:
     execution_environment:
       type: "warehouse"
       warehouse: ""
-    semantic_view: 'DATABASE.SCHEMA.SEMANTIC_VIEW'
+    semantic_view: '{{ ref("revenue_semantic_view") }}'
 ```
 
 Run it:
@@ -86,6 +86,7 @@ The model body is passed verbatim as the agent YAML specification to Snowflake's
 - All current and future Snowflake agent YAML options work automatically
 - No package updates needed when Snowflake adds new features
 - You can use Jinja (`{{ ref() }}`, `{{ var() }}`, etc.) anywhere in the spec
+- `{{ ref() }}` calls in `tool_resources` resolve to fully qualified names **and** wire the agent into the dbt DAG — the agent will always run after its upstream semantic views
 
 ## Idempotency
 

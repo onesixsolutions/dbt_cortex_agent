@@ -1,6 +1,12 @@
 version: 2
 
 models:
+  - name: base_table
+    description: "Minimal base table used by test_semantic_view."
+
+  - name: test_semantic_view
+    description: "Minimal semantic view referenced via ref() in cortex_agent_full."
+
   - name: cortex_agent_basic
     description: "Minimal agent with no tools — baseline existence test."
 
