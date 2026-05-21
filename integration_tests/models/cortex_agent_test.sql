@@ -5,7 +5,7 @@
         comment='Full integration test agent — exercises every config and spec option',
         profile='{"display_name": "Full Test Agent", "avatar": "robot", "color": "blue"}',
         tags=['integration'],
-        grants=['dbt_demo_role']
+        agent_grants=['dbt_demo_role']
     )
 }}
 

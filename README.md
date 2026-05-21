@@ -78,7 +78,7 @@ SHOW AGENTS IN SCHEMA my_db.my_schema;
 | `materialized` | string | Yes | Must be `'cortex_agent'` |
 | `comment` | string | No | Agent description visible in Snowflake |
 | `profile` | string (JSON) | No | `{"display_name": "...", "avatar": "...", "color": "..."}` |
-| `grants` | list | No | Role names to grant `USAGE` on the agent, e.g. `['my_role']` |
+| `agent_grants` | list | No | Role names to grant `USAGE` on the agent, e.g. `['my_role']` |
 
 ## How It Works
 

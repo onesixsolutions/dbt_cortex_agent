@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- `grants` config option — list of role names to grant `USAGE` on the agent after creation
+- `agent_grants` config option — list of role names to grant `USAGE` on the agent after creation (`grants` is reserved by dbt for its own privilege handling)
 - `snowflake__grant_cortex_agent_usage` macro for GRANT DDL generation
 
 ### Changed
