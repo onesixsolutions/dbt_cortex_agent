@@ -17,7 +17,7 @@
   {%- endif %}
   from specification
   $$
-  {{ specification }}
+{{ specification | trim }}
   $$
 
 {% endmacro %}
