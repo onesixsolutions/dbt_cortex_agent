@@ -11,6 +11,7 @@
   language sql
   execute as owner
   as
+  $$
   begin
     let parsed_history variant := parse_json(:CONVERSATION_HISTORY);
     insert into {{ feedback_table }}
@@ -18,6 +19,7 @@
     select
       '{{ relation.identifier | upper }}', :SESSION_ID, :RATING, :USER_COMMENT, :parsed_history, current_timestamp();
     return 'Feedback submitted';
-  end
+  end;
+  $$
 
 {% endmacro %}
