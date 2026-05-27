@@ -15,9 +15,9 @@
   begin
     let parsed_history variant := parse_json(:CONVERSATION_HISTORY);
     insert into {{ feedback_table }}
-      (agent_name, session_id, rating, comment, conversation_history, created_at)
+      (session_id, rating, comment, conversation_history, created_at)
     select
-      '{{ relation.identifier | upper }}', :SESSION_ID, :RATING, :USER_COMMENT, :parsed_history, current_timestamp();
+      :SESSION_ID, :RATING, :USER_COMMENT, :parsed_history, current_timestamp();
     return 'Feedback submitted';
   end;
   $$

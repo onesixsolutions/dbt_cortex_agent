@@ -2,7 +2,7 @@
 
   create table if not exists {{ feedback_table }} (
     feedback_id          varchar         default uuid_string(),
-    agent_name           varchar         not null,
+    agent_name           varchar,
     session_id           varchar,
     rating               number,
     comment              varchar,

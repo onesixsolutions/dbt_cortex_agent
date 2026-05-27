@@ -5,8 +5,7 @@
         comment='Full integration test agent — exercises every config and spec option',
         profile='{"display_name": "Full Test Agent", "avatar": "robot", "color": "blue"}',
         tags=['integration'],
-        agent_grants=['dbt_demo_role'],
-        feedback_table=target.database ~ '.' ~ target.schema ~ '_INTEGRATION_TESTS.CORTEX_AGENT_FEEDBACK'
+        agent_grants=['dbt_demo_role']
     )
 }}
 

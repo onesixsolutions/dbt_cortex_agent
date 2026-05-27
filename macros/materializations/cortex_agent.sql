@@ -6,8 +6,8 @@
 --   comment (string, optional)        : agent-level comment visible in Snowflake
 --   profile (string, optional)        : JSON object with display_name, avatar, and color
 --   agent_grants (list, optional)     : list of role names to grant USAGE on the agent
---   feedback_table (string, optional) : fully-qualified table name for user feedback,
---                                       e.g. 'MY_DB.MY_SCHEMA.AGENT_FEEDBACK'.
+--   feedback_table (string, optional) : fully-qualified table name for user feedback.
+--                                       Defaults to {DB}.{SCHEMA}.{AGENT}_FEEDBACK.
 --                                       Creates the table (if absent) and a stored procedure
 --                                       named {agent}_SUBMIT_FEEDBACK on every dbt run.
 
@@ -24,6 +24,10 @@
       database=this.database,
       type='view'
   ) -%}
+
+  {%- if feedback_table is none -%}
+    {%- set feedback_table = target_relation.database ~ '.' ~ target_relation.schema ~ '.' ~ (target_relation.identifier | upper) ~ '_FEEDBACK' -%}
+  {%- endif -%}
 
   {{ run_hooks(pre_hooks) }}
 

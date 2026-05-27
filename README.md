@@ -79,7 +79,7 @@ SHOW AGENTS IN SCHEMA my_db.my_schema;
 | `comment` | string | No | Agent description visible in Snowflake |
 | `profile` | string (JSON) | No | `{"display_name": "...", "avatar": "...", "color": "..."}` |
 | `agent_grants` | list | No | Role names to grant `USAGE` on the agent, e.g. `['my_role']` |
-| `feedback_table` | string | No | Fully-qualified table for user feedback, e.g. `'MY_DB.MY_SCHEMA.AGENT_FEEDBACK'`. See [Feedback Tool](#feedback-tool). |
+| `feedback_table` | string | No | Fully-qualified table for user feedback. Defaults to `{DB}.{SCHEMA}.{AGENT_NAME}_FEEDBACK`. See [Feedback Tool](#feedback-tool). |
 
 ## How It Works
 
@@ -106,18 +106,24 @@ Refer to the [Snowflake CREATE AGENT docs](https://docs.snowflake.com/en/sql-ref
 
 ## Feedback Tool
 
-Set `feedback_table` in your model config to automatically provision:
+Every agent automatically gets its own feedback table and stored procedure — no config required. On each `dbt run` the materialization provisions:
 
-1. A **feedback table** (created once, never replaced) with columns: `feedback_id`, `agent_name`, `session_id`, `rating`, `comment`, `conversation_history`, `created_at`
+1. A **feedback table** named `{AGENT_NAME}_FEEDBACK` in the same database and schema as the agent, with columns: `feedback_id`, `session_id`, `rating`, `comment`, `conversation_history`, `created_at`
 2. A **stored procedure** named `{AGENT_NAME}_SUBMIT_FEEDBACK` in the same database/schema as the agent
 
-Then add the tool entry to your spec body so the agent can call it:
+To use a different table name, set `feedback_table` explicitly in your config:
 
 ```sql
 {{ config(
     materialized='cortex_agent',
-    feedback_table='MY_DB.MY_SCHEMA.AGENT_FEEDBACK'
+    feedback_table='MY_DB.MY_SCHEMA.SHARED_FEEDBACK'
 ) }}
+```
+
+Add the tool entry to your spec body so the agent can call it:
+
+```sql
+{{ config(materialized='cortex_agent') }}
 
 tools:
   - tool_spec:
