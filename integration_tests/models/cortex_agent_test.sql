@@ -11,7 +11,7 @@
 }}
 
 models:
-  orchestration: claude-4-sonnet
+  orchestration: auto
 
 orchestration:
   budget:
@@ -87,7 +87,7 @@ skills: []
 
 tool_resources:
   analyst_tool:
-    semantic_view: '{{ ref("test_semantic_view") }}'
+    semantic_view: '{{ ref(test_semantic_view) }}'
   search_tool:
     name: '{{ var("test_cortex_search_service") }}'
     max_results: 10

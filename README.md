@@ -37,7 +37,7 @@ Create a model file whose **body is the raw Snowflake agent YAML specification**
 ) }}
 
 models:
-  orchestration: claude-4-sonnet
+  orchestration: auto
 orchestration:
   budget:
     seconds: 30
