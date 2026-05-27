@@ -11,11 +11,13 @@
   language sql
   as
   $$
+  begin
     insert into {{ feedback_table }}
       (agent_name, session_id, rating, comment, conversation_history, created_at)
     values
-      ('{{ relation.identifier }}', :SESSION_ID, :RATING, :COMMENT, :CONVERSATION_HISTORY, current_timestamp());
+      ('{{ relation.identifier }}', SESSION_ID, RATING, COMMENT, CONVERSATION_HISTORY, current_timestamp());
     return 'Feedback submitted';
+  end;
   $$
 
 {% endmacro %}
