@@ -17,8 +17,7 @@ models:
   dbt_cortex_agent_integration_tests:
     +schema: INTEGRATION_TESTS
 
-# Override test_cortex_search_service to point at a real Cortex Search Service.
-# Snowflake Cortex Search is not a dbt object so it cannot be ref()'d.
-# Passed via: dbt run --vars '{"test_cortex_search_service": "DB.SCHEMA.MY_SERVICE"}'
 vars:
-  test_cortex_search_service: "DB.SCHEMA.SEARCH_SERVICE"
+  # Points at the Cortex Search Service created by base_table's post_hook.
+  # The schema suffix matches dbt's custom-schema behaviour (target.schema ~ '_INTEGRATION_TESTS').
+  test_cortex_search_service: "{{ target.database }}.{{ target.schema }}_INTEGRATION_TESTS.TEST_SEARCH_SERVICE"

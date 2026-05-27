@@ -89,9 +89,9 @@ tool_resources:
   analyst_tool:
     semantic_view: '{{ ref("test_semantic_view") }}'
   search_tool:
-    name: '{{ var("test_cortex_search_service", "DB.SCHEMA.SEARCH_SERVICE") }}'
+    name: '{{ var("test_cortex_search_service") }}'
     max_results: 10
-    title_column: title
+    title_column: description
     id_column: id
   SUBMIT_FEEDBACK:
     execution_environment:
