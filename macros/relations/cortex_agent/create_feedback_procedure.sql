@@ -5,7 +5,7 @@
       SESSION_ID           varchar,
       RATING               varchar,
       COMMENT              varchar,
-      CONVERSATION_HISTORY variant
+      CONVERSATION_HISTORY varchar
     )
   returns varchar
   language sql
@@ -15,7 +15,7 @@
     insert into {{ feedback_table }}
       (agent_name, session_id, rating, comment, conversation_history, created_at)
     values
-      ('{{ relation.identifier }}', SESSION_ID, RATING, COMMENT, CONVERSATION_HISTORY, current_timestamp());
+      ('{{ relation.identifier }}', SESSION_ID, RATING, COMMENT, parse_json(CONVERSATION_HISTORY), current_timestamp());
     return 'Feedback submitted';
   end;
   $$

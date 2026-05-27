@@ -65,19 +65,14 @@ tools:
             description: 'Current conversation session identifier.'
           rating:
             type: string
-            enum: [thumbs_up, thumbs_down]
+            enum: [good, bad]
             description: 'The user rating.'
           comment:
             type: string
             description: 'Optional free-text feedback from the user.'
           conversation_history:
-            type: array
-            description: 'Last 10 messages from the conversation, in order.'
-            items:
-              type: object
-              properties:
-                role:    { type: string }
-                content: { type: string }
+            type: string
+            description: 'Last 10 messages from the conversation as a JSON string, e.g. [{"role":"user","content":"..."}].'
         required:
           - session_id
           - rating
@@ -98,6 +93,6 @@ tool_resources:
       query_timeout: 300
       type: warehouse
       warehouse: ''
-    identifier: '{{ this.database }}.{{ this.schema }}.{{ this.identifier }}_SUBMIT_FEEDBACK'
-    name: '{{ this.identifier }}_SUBMIT_FEEDBACK(VARCHAR, VARCHAR, VARCHAR, VARIANT)'
+    identifier: '{{ this.database }}.{{ this.schema }}.{{ this.identifier | upper }}_SUBMIT_FEEDBACK'
+    name: '{{ this.identifier | upper }}_SUBMIT_FEEDBACK(VARCHAR, VARCHAR, VARCHAR, VARCHAR)'
     type: procedure
