@@ -133,7 +133,7 @@ tools:
           rating:
             type: string
             enum: [good, bad]
-          comment:
+          user_comment:
             type: string
             description: 'Optional free-text feedback.'
           conversation_history:

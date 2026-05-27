@@ -4,7 +4,7 @@
     {{ relation.database }}.{{ relation.schema }}.{{ relation.identifier }}_SUBMIT_FEEDBACK(
       SESSION_ID           varchar,
       RATING               varchar,
-      COMMENT              varchar,
+      USER_COMMENT         varchar,
       CONVERSATION_HISTORY varchar
     )
   returns varchar
@@ -15,7 +15,7 @@
     insert into {{ feedback_table }}
       (agent_name, session_id, rating, comment, conversation_history, created_at)
     values
-      ('{{ relation.identifier }}', SESSION_ID, RATING, COMMENT, parse_json(CONVERSATION_HISTORY), current_timestamp());
+      ('{{ relation.identifier }}', SESSION_ID, RATING, USER_COMMENT, parse_json(CONVERSATION_HISTORY), current_timestamp());
     return 'Feedback submitted';
   end;
   $$

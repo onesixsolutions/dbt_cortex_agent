@@ -67,7 +67,7 @@ tools:
             type: string
             enum: [good, bad]
             description: 'The user rating.'
-          comment:
+          user_comment:
             type: string
             description: 'Optional free-text feedback from the user.'
           conversation_history:
