@@ -131,8 +131,8 @@ tools:
             type: string
             description: 'Current conversation session identifier.'
           rating:
-            type: string
-            enum: [good, bad]
+            type: number
+            description: 'The user rating from 1 (worst) to 5 (best).'
           user_comment:
             type: string
             description: 'Optional free-text feedback.'
@@ -148,7 +148,7 @@ tool_resources:
       type: warehouse
       warehouse: ''
     identifier: '{{ this.database }}.{{ this.schema }}.{{ this.identifier | upper }}_SUBMIT_FEEDBACK'
-    name: '{{ this.identifier | upper }}_SUBMIT_FEEDBACK(VARCHAR, VARCHAR, VARCHAR, VARCHAR)'
+    name: '{{ this.identifier | upper }}_SUBMIT_FEEDBACK(VARCHAR, NUMBER, VARCHAR, VARCHAR)'
     type: procedure
 ```
 
