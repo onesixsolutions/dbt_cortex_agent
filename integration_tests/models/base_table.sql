@@ -1,5 +1,6 @@
 {{- config(
     materialized='table',
+    alias='BASE_TABLE',
     post_hook="create or replace cortex search service {{ this.database }}.{{ this.schema }}.TEST_SEARCH_SERVICE on description attributes id warehouse = {{ target.warehouse }} target_lag = '7 days' as (select id, description from {{ this }})"
 ) -}}
 

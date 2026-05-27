@@ -1,4 +1,4 @@
-{{ config(materialized='semantic_view') }}
+{{ config(materialized='semantic_view', alias='TEST_SEMANTIC_VIEW') }}
 
 -- Minimal semantic view used as a tool_resource in cortex_agent_test.
 -- Requires the dbt_semantic_view package.
