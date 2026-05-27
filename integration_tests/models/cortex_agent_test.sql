@@ -5,7 +5,8 @@
         comment='Full integration test agent — exercises every config and spec option',
         profile='{"display_name": "Full Test Agent", "avatar": "robot", "color": "blue"}',
         tags=['integration'],
-        agent_grants=['dbt_demo_role']
+        agent_grants=['dbt_demo_role'],
+        feedback_table=target.database ~ '.' ~ target.schema ~ '_INTEGRATION_TESTS.CORTEX_AGENT_FEEDBACK'
     )
 }}
 
@@ -52,6 +53,38 @@ tools:
         required:
           - query
 
+  - tool_spec:
+      type: generic
+      name: SUBMIT_FEEDBACK
+      description: 'Records user feedback about agent responses. Call when the user expresses satisfaction or dissatisfaction, or explicitly asks to rate or submit feedback. Always include the last 10 conversation messages.'
+      input_schema:
+        type: object
+        properties:
+          session_id:
+            type: string
+            description: 'Current conversation session identifier.'
+          rating:
+            type: string
+            enum: [thumbs_up, thumbs_down]
+            description: 'The user rating.'
+          comment:
+            type: string
+            description: 'Optional free-text feedback from the user.'
+          conversation_history:
+            type: array
+            description: 'Last 10 messages from the conversation, in order.'
+            items:
+              type: object
+              properties:
+                role:    { type: string }
+                content: { type: string }
+        required:
+          - session_id
+          - rating
+          - conversation_history
+
+skills: []
+
 tool_resources:
   analyst_tool:
     semantic_view: '{{ ref("test_semantic_view") }}'
@@ -60,3 +93,11 @@ tool_resources:
     max_results: 10
     title_column: title
     id_column: id
+  SUBMIT_FEEDBACK:
+    execution_environment:
+      query_timeout: 300
+      type: warehouse
+      warehouse: ''
+    identifier: '{{ this.database }}.{{ this.schema }}.{{ this.identifier }}_SUBMIT_FEEDBACK'
+    name: '{{ this.identifier }}_SUBMIT_FEEDBACK(VARCHAR, VARCHAR, VARCHAR, VARIANT)'
+    type: procedure

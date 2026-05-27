@@ -3,15 +3,20 @@
 -- The materialization wraps it in CREATE OR REPLACE AGENT ... FROM SPECIFICATION $$ ... $$.
 --
 -- Config options:
---   comment (string, optional) : agent-level comment visible in Snowflake
---   profile (string, optional) : JSON object with display_name, avatar, and color
---   agent_grants (list, optional) : list of role names to grant USAGE on the agent
+--   comment (string, optional)        : agent-level comment visible in Snowflake
+--   profile (string, optional)        : JSON object with display_name, avatar, and color
+--   agent_grants (list, optional)     : list of role names to grant USAGE on the agent
+--   feedback_table (string, optional) : fully-qualified table name for user feedback,
+--                                       e.g. 'MY_DB.MY_SCHEMA.AGENT_FEEDBACK'.
+--                                       Creates the table (if absent) and a stored procedure
+--                                       named {agent}_SUBMIT_FEEDBACK on every dbt run.
 
 {% materialization cortex_agent, adapter='snowflake' %}
 
-  {%- set comment = config.get('comment', default=none) -%}
-  {%- set profile = config.get('profile', default=none) -%}
-  {%- set agent_grants = config.get('agent_grants', default=[]) -%}
+  {%- set comment        = config.get('comment', default=none) -%}
+  {%- set profile        = config.get('profile', default=none) -%}
+  {%- set agent_grants   = config.get('agent_grants', default=[]) -%}
+  {%- set feedback_table = config.get('feedback_table', default=none) -%}
 
   {%- set target_relation = api.Relation.create(
       identifier=this.identifier,
@@ -21,6 +26,16 @@
   ) -%}
 
   {{ run_hooks(pre_hooks) }}
+
+  {%- if feedback_table is not none %}
+  {% call statement('feedback_table') %}
+    {{ dbt_cortex_agent.snowflake__create_feedback_table(feedback_table) }}
+  {% endcall %}
+
+  {% call statement('feedback_procedure') %}
+    {{ dbt_cortex_agent.snowflake__create_feedback_procedure(target_relation, feedback_table) }}
+  {% endcall %}
+  {%- endif %}
 
   {% call statement('main') %}
     {{ dbt_cortex_agent.snowflake__create_cortex_agent(target_relation, sql, comment, profile) }}
