@@ -79,7 +79,7 @@ SHOW AGENTS IN SCHEMA my_db.my_schema;
 | `comment` | string | No | Agent description visible in Snowflake |
 | `profile` | string (JSON) | No | `{"display_name": "...", "avatar": "...", "color": "..."}` |
 | `agent_grants` | list | No | Role names to grant `USAGE` on the agent, e.g. `['my_role']` |
-| `create_feedback_table` | bool | No | Whether to create the feedback table and procedure. Defaults to `true`. Set to `false` to skip. See [Feedback Tool](#feedback-tool). |
+| `create_feedback_table` | bool | No | Whether to create the feedback table and procedure. Defaults to `false`. Set to `true` to enable. See [Feedback Tool](#feedback-tool). |
 | `feedback_schema` | string | No | Schema for the feedback table and `AGENT_SUBMIT_FEEDBACK` procedure. Accepts `'SCHEMA'` or `'DB.SCHEMA'`. Defaults to the agent's own database and schema. See [Feedback Tool](#feedback-tool). |
 | `feedback_table` | string | No | Fully-qualified table name override for user feedback. Defaults to `{feedback_schema}.AGENT_FEEDBACK`. Ignored when `create_feedback_table` is `false`. See [Feedback Tool](#feedback-tool). |
 
@@ -141,12 +141,12 @@ To override the table name independently of the schema, use `feedback_table`:
 ) }}
 ```
 
-To disable feedback provisioning entirely, set `create_feedback_table: false`:
+To enable feedback provisioning, set `create_feedback_table: true`:
 
 ```sql
 {{ config(
     materialized='cortex_agent',
-    create_feedback_table=false
+    create_feedback_table=true
 ) }}
 ```
 

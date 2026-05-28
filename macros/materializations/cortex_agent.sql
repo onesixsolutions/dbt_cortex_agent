@@ -7,7 +7,7 @@
 --   profile (string, optional)        : JSON object with display_name, avatar, and color
 --   agent_grants (list, optional)     : list of role names to grant USAGE on the agent
 --   create_feedback_table (bool, optional) : whether to create the feedback table and procedure.
---                                            Defaults to true. Set to false to skip.
+--                                            Defaults to false. Set to true to enable.
 --   feedback_schema (string, optional) : schema for the feedback table and AGENT_SUBMIT_FEEDBACK
 --                                        procedure. Accepts 'SCHEMA' or 'DB.SCHEMA'. Defaults to
 --                                        the agent's own database and schema.
@@ -21,7 +21,7 @@
   {%- set comment                = config.get('comment', default=none) -%}
   {%- set profile                = config.get('profile', default=none) -%}
   {%- set agent_grants           = config.get('agent_grants', default=[]) -%}
-  {%- set create_feedback_table  = config.get('create_feedback_table', default=true) -%}
+  {%- set create_feedback_table  = config.get('create_feedback_table', default=false) -%}
   {%- set feedback_schema_config = config.get('feedback_schema', default=none) -%}
   {%- set feedback_table         = config.get('feedback_table', default=none) -%}
 
