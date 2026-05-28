@@ -54,11 +54,14 @@ tools:
 
   - tool_spec:
       type: generic
-      name: SUBMIT_FEEDBACK
+      name: AGENT_SUBMIT_FEEDBACK
       description: 'Records user feedback about agent responses. Call when the user expresses satisfaction or dissatisfaction, or explicitly asks to rate or submit feedback. Always include the last 10 conversation messages.'
       input_schema:
         type: object
         properties:
+          agent_name:
+            type: string
+            description: 'Name of this agent. Always pass "{{ this.identifier | upper }}".'
           session_id:
             type: string
             description: 'Current conversation session identifier.'
@@ -72,6 +75,7 @@ tools:
             type: string
             description: 'Last 10 messages from the conversation as a JSON string, e.g. [{"role":"user","content":"..."}].'
         required:
+          - agent_name
           - session_id
           - rating
           - conversation_history
@@ -86,11 +90,11 @@ tool_resources:
     max_results: 10
     title_column: description
     id_column: id
-  SUBMIT_FEEDBACK:
+  AGENT_SUBMIT_FEEDBACK:
     execution_environment:
       query_timeout: 300
       type: warehouse
       warehouse: ''
-    identifier: '{{ this.database }}.{{ this.schema }}.{{ this.identifier | upper }}_SUBMIT_FEEDBACK'
-    name: '{{ this.identifier | upper }}_SUBMIT_FEEDBACK(VARCHAR, NUMBER, VARCHAR, VARCHAR)'
+    identifier: '{{ this.database }}.{{ this.schema }}.AGENT_SUBMIT_FEEDBACK'
+    name: 'AGENT_SUBMIT_FEEDBACK(VARCHAR, VARCHAR, NUMBER, VARCHAR, VARCHAR)'
     type: procedure

@@ -11,7 +11,7 @@
 --   feedback_table (string, optional) : fully-qualified table name for user feedback.
 --                                       Defaults to {DB}.{SCHEMA}.{AGENT}_FEEDBACK.
 --                                       Creates the table (if absent) and a stored procedure
---                                       named {agent}_SUBMIT_FEEDBACK on every dbt run.
+--                                       named {agent}_AGENT_SUBMIT_FEEDBACK on every dbt run.
 
 {% materialization cortex_agent, adapter='snowflake' %}
 
@@ -29,7 +29,7 @@
   ) -%}
 
   {%- if create_feedback_table and feedback_table is none -%}
-    {%- set feedback_table = target_relation.database ~ '.' ~ target_relation.schema ~ '.' ~ (target_relation.identifier | upper) ~ '_FEEDBACK' -%}
+    {%- set feedback_table = target_relation.database ~ '.' ~ target_relation.schema ~ '.AGENT_FEEDBACK' -%}
   {%- endif -%}
 
   {{ run_hooks(pre_hooks) }}

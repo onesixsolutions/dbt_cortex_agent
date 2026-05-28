@@ -80,7 +80,7 @@ SHOW AGENTS IN SCHEMA my_db.my_schema;
 | `profile` | string (JSON) | No | `{"display_name": "...", "avatar": "...", "color": "..."}` |
 | `agent_grants` | list | No | Role names to grant `USAGE` on the agent, e.g. `['my_role']` |
 | `create_feedback_table` | bool | No | Whether to create the feedback table and procedure. Defaults to `true`. Set to `false` to skip. See [Feedback Tool](#feedback-tool). |
-| `feedback_table` | string | No | Fully-qualified table for user feedback. Defaults to `{DB}.{SCHEMA}.{AGENT_NAME}_FEEDBACK`. Ignored when `create_feedback_table` is `false`. See [Feedback Tool](#feedback-tool). |
+| `feedback_table` | string | No | Fully-qualified table for user feedback. Defaults to `{DB}.{SCHEMA}.AGENT_FEEDBACK` (shared across all agents in the schema). Ignored when `create_feedback_table` is `false`. See [Feedback Tool](#feedback-tool). |
 
 ## How It Works
 
@@ -107,10 +107,10 @@ Refer to the [Snowflake CREATE AGENT docs](https://docs.snowflake.com/en/sql-ref
 
 ## Feedback Tool
 
-Every agent automatically gets its own feedback table and stored procedure — no config required. On each `dbt run` the materialization provisions:
+All agents in the same schema share a single feedback table and a single stored procedure — no config required. On each `dbt run` the materialization provisions (idempotently):
 
-1. A **feedback table** named `{AGENT_NAME}_FEEDBACK` in the same database and schema as the agent, with columns: `feedback_id`, `session_id`, `rating`, `comment`, `conversation_history`, `created_at`
-2. A **stored procedure** named `{AGENT_NAME}_SUBMIT_FEEDBACK` in the same database/schema as the agent
+1. A **feedback table** named `AGENT_FEEDBACK` in the same database and schema as the agent, with columns: `feedback_id`, `agent_name`, `session_id`, `user_name`, `rating`, `comment`, `conversation_history`, `created_at`
+2. A **stored procedure** named `AGENT_SUBMIT_FEEDBACK` in the same database/schema as the agent
 
 To disable feedback provisioning entirely, set `create_feedback_table: false`:
 
@@ -138,11 +138,14 @@ Add the tool entry to your spec body so the agent can call it:
 tools:
   - tool_spec:
       type: generic
-      name: SUBMIT_FEEDBACK
+      name: AGENT_SUBMIT_FEEDBACK
       description: 'Records user feedback. Call when the user rates or comments on a response. Always pass the last 10 conversation messages.'
       input_schema:
         type: object
         properties:
+          agent_name:
+            type: string
+            description: 'Name of this agent. Always pass "{{ this.identifier | upper }}".'
           session_id:
             type: string
             description: 'Current conversation session identifier.'
@@ -155,16 +158,16 @@ tools:
           conversation_history:
             type: string
             description: 'Last 10 messages from the conversation as a JSON string, e.g. [{"role":"user","content":"..."}].'
-        required: [session_id, rating, conversation_history]
+        required: [agent_name, session_id, rating, conversation_history]
 
 tool_resources:
-  SUBMIT_FEEDBACK:
+  AGENT_SUBMIT_FEEDBACK:
     execution_environment:
       query_timeout: 300
       type: warehouse
       warehouse: ''
-    identifier: '{{ this.database }}.{{ this.schema }}.{{ this.identifier | upper }}_SUBMIT_FEEDBACK'
-    name: '{{ this.identifier | upper }}_SUBMIT_FEEDBACK(VARCHAR, NUMBER, VARCHAR, VARCHAR)'
+    identifier: '{{ this.database }}.{{ this.schema }}.AGENT_SUBMIT_FEEDBACK'
+    name: 'AGENT_SUBMIT_FEEDBACK(VARCHAR, VARCHAR, NUMBER, VARCHAR, VARCHAR)'
     type: procedure
 ```
 
