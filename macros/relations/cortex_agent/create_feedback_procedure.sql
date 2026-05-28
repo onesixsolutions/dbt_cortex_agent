@@ -9,15 +9,15 @@
     )
   returns varchar
   language sql
-  execute as owner
+  execute as caller
   as
   $$
   begin
     let parsed_history variant := parse_json(:CONVERSATION_HISTORY);
     insert into {{ feedback_table }}
-      (session_id, rating, comment, conversation_history, created_at)
+      (session_id, user_name, rating, comment, conversation_history, created_at)
     select
-      :SESSION_ID, :RATING, :USER_COMMENT, :parsed_history, current_timestamp();
+      :SESSION_ID, current_user(), :RATING, :USER_COMMENT, :parsed_history, current_timestamp();
     return 'Feedback submitted';
   end;
   $$

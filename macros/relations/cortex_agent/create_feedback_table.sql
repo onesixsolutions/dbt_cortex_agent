@@ -4,6 +4,7 @@
     feedback_id          varchar         default uuid_string(),
     agent_name           varchar,
     session_id           varchar,
+    user_name            varchar,
     rating               number,
     comment              varchar,
     conversation_history variant,
