@@ -80,7 +80,8 @@ SHOW AGENTS IN SCHEMA my_db.my_schema;
 | `profile` | string (JSON) | No | `{"display_name": "...", "avatar": "...", "color": "..."}` |
 | `agent_grants` | list | No | Role names to grant `USAGE` on the agent, e.g. `['my_role']` |
 | `create_feedback_table` | bool | No | Whether to create the feedback table and procedure. Defaults to `true`. Set to `false` to skip. See [Feedback Tool](#feedback-tool). |
-| `feedback_table` | string | No | Fully-qualified table for user feedback. Defaults to `{DB}.{SCHEMA}.AGENT_FEEDBACK` (shared across all agents in the schema). Ignored when `create_feedback_table` is `false`. See [Feedback Tool](#feedback-tool). |
+| `feedback_schema` | string | No | Schema for the feedback table and `AGENT_SUBMIT_FEEDBACK` procedure. Accepts `'SCHEMA'` or `'DB.SCHEMA'`. Defaults to the agent's own database and schema. See [Feedback Tool](#feedback-tool). |
+| `feedback_table` | string | No | Fully-qualified table name override for user feedback. Defaults to `{feedback_schema}.AGENT_FEEDBACK`. Ignored when `create_feedback_table` is `false`. See [Feedback Tool](#feedback-tool). |
 
 ## How It Works
 
@@ -107,10 +108,38 @@ Refer to the [Snowflake CREATE AGENT docs](https://docs.snowflake.com/en/sql-ref
 
 ## Feedback Tool
 
-All agents in the same schema share a single feedback table and a single stored procedure — no config required. On each `dbt run` the materialization provisions (idempotently):
+All agents share a single feedback table and a single `AGENT_SUBMIT_FEEDBACK` procedure — no config required. On each `dbt run` the materialization provisions (idempotently):
 
-1. A **feedback table** named `AGENT_FEEDBACK` in the same database and schema as the agent, with columns: `feedback_id`, `agent_name`, `session_id`, `user_name`, `rating`, `comment`, `conversation_history`, `created_at`
-2. A **stored procedure** named `AGENT_SUBMIT_FEEDBACK` in the same database/schema as the agent
+1. A **feedback table** named `AGENT_FEEDBACK` in the agent's database and schema, with columns: `feedback_id`, `agent_name`, `user_name`, `rating`, `comment`, `conversation_history`, `created_at`
+2. A **stored procedure** named `AGENT_SUBMIT_FEEDBACK` in the same location
+
+By default both land in the agent's own schema. Use `feedback_schema` to place them in a shared schema instead:
+
+```sql
+{{ config(
+    materialized='cortex_agent',
+    feedback_schema='SHARED_SCHEMA'
+) }}
+```
+
+Or with an explicit database:
+
+```sql
+{{ config(
+    materialized='cortex_agent',
+    feedback_schema='MY_DB.SHARED_SCHEMA'
+) }}
+```
+
+To override the table name independently of the schema, use `feedback_table`:
+
+```sql
+{{ config(
+    materialized='cortex_agent',
+    feedback_schema='SHARED_SCHEMA',
+    feedback_table='MY_DB.SHARED_SCHEMA.AGENT_FEEDBACK'
+) }}
+```
 
 To disable feedback provisioning entirely, set `create_feedback_table: false`:
 
@@ -121,19 +150,13 @@ To disable feedback provisioning entirely, set `create_feedback_table: false`:
 ) }}
 ```
 
-To use a different table name, set `feedback_table` explicitly in your config:
+Add the tool entry to your spec body so the agent can call it. Update the `identifier` to match your `feedback_schema` if you set one:
 
 ```sql
 {{ config(
     materialized='cortex_agent',
-    feedback_table='MY_DB.MY_SCHEMA.SHARED_FEEDBACK'
+    feedback_schema='SHARED_SCHEMA'
 ) }}
-```
-
-Add the tool entry to your spec body so the agent can call it:
-
-```sql
-{{ config(materialized='cortex_agent') }}
 
 tools:
   - tool_spec:
@@ -146,9 +169,6 @@ tools:
           agent_name:
             type: string
             description: 'Name of this agent. Always pass "{{ this.identifier | upper }}".'
-          session_id:
-            type: string
-            description: 'Current conversation session identifier.'
           rating:
             type: number
             description: 'The user rating from 1 (worst) to 5 (best).'
@@ -158,7 +178,7 @@ tools:
           conversation_history:
             type: string
             description: 'Last 10 messages from the conversation as a JSON string, e.g. [{"role":"user","content":"..."}].'
-        required: [agent_name, session_id, rating, conversation_history]
+        required: [agent_name, rating, conversation_history]
 
 tool_resources:
   AGENT_SUBMIT_FEEDBACK:
@@ -166,8 +186,8 @@ tool_resources:
       query_timeout: 300
       type: warehouse
       warehouse: ''
-    identifier: '{{ this.database }}.{{ this.schema }}.AGENT_SUBMIT_FEEDBACK'
-    name: 'AGENT_SUBMIT_FEEDBACK(VARCHAR, VARCHAR, NUMBER, VARCHAR, VARCHAR)'
+    identifier: '{{ this.database }}.SHARED_SCHEMA.AGENT_SUBMIT_FEEDBACK'
+    name: 'AGENT_SUBMIT_FEEDBACK(VARCHAR, NUMBER, VARCHAR, VARCHAR)'
     type: procedure
 ```
 

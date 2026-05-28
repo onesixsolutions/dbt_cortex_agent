@@ -62,9 +62,6 @@ tools:
           agent_name:
             type: string
             description: 'Name of this agent. Always pass "{{ this.identifier | upper }}".'
-          session_id:
-            type: string
-            description: 'Current conversation session identifier.'
           rating:
             type: number
             description: 'The user rating from 1 (worst) to 5 (best).'
@@ -76,7 +73,6 @@ tools:
             description: 'Last 10 messages from the conversation as a JSON string, e.g. [{"role":"user","content":"..."}].'
         required:
           - agent_name
-          - session_id
           - rating
           - conversation_history
 
@@ -96,5 +92,5 @@ tool_resources:
       type: warehouse
       warehouse: ''
     identifier: '{{ this.database }}.{{ this.schema }}.AGENT_SUBMIT_FEEDBACK'
-    name: 'AGENT_SUBMIT_FEEDBACK(VARCHAR, VARCHAR, NUMBER, VARCHAR, VARCHAR)'
+    name: 'AGENT_SUBMIT_FEEDBACK(VARCHAR, NUMBER, VARCHAR, VARCHAR)'
     type: procedure
