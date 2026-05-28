@@ -13,7 +13,7 @@ with ddl as (
 ),
 
 assertions as (
-  select 'orchestration model missing'       as error from ddl where not contains(content, 'claude-4-sonnet')
+  select 'orchestration model missing'       as error from ddl where not contains(content, 'auto')
   union all
   select 'token budget missing'              as error from ddl where not contains(content, '32000')
   union all

@@ -47,6 +47,14 @@ jobs:
           SNOWFLAKE_TEST_WAREHOUSE: ${{ secrets.SNOWFLAKE_TEST_WAREHOUSE }}
           SNOWFLAKE_TEST_SCHEMA: ${{ secrets.SNOWFLAKE_TEST_SCHEMA }}
 
+      - name: Print compiled and run SQL on failure
+        if: failure()
+        run: |
+          echo "=== Compiled cortex_agent_test.sql ==="
+          cat integration_tests/target/compiled/dbt_cortex_agent_integration_tests/models/cortex_agent_test.sql || echo "(file not found)"
+          echo "=== Run cortex_agent_test.sql ==="
+          cat integration_tests/target/run/dbt_cortex_agent_integration_tests/models/cortex_agent_test.sql || echo "(file not found)"
+
       - name: Run dbt tests
         working-directory: integration_tests
         run: dbt test
