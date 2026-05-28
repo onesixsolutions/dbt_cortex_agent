@@ -162,7 +162,7 @@ tools:
   - tool_spec:
       type: generic
       name: AGENT_SUBMIT_FEEDBACK
-      description: 'Records user feedback. Call when the user rates or comments on a response. Always pass the last 10 conversation messages.'
+      description: 'Records user feedback. Call when the user says "feedback" or explicitly rates or comments on a response. Always pass the last 10 conversation messages. Example: user says "feedback: 1. Output wrong, expected $100" → call with rating=1, user_comment="Output wrong, expected $100". Example: user says "feedback: 5. Completely Correct" → call with rating=5, user_comment="Completely Correct".'
       input_schema:
         type: object
         properties:
