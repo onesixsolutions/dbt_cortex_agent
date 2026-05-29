@@ -56,7 +56,7 @@ tools:
   - tool_spec:
       type: generic
       name: AGENT_SUBMIT_FEEDBACK
-      description: 'Records user feedback about agent responses. Call when the user says "feedback" or explicitly rates or comments on a response. Always include the last 10 conversation messages. Example: user says "1. Output wrong, expected $100" → call with rating=1, user_comment="Output wrong, expected $100". Example: user says "5. Completely Correct" → call with rating=5, user_comment="Completely Correct".'
+      description: 'Records user feedback about agent responses. Call when the user says "feedback" or explicitly rates or comments on a response. Each time feedback is triggered, ask the user fresh for a rating (1–5) and comment — do NOT reuse, reference, or pre-fill from any previously submitted feedback. For conversation_history, include only the last 10 messages that are NOT part of a prior feedback exchange (exclude all previous AGENT_SUBMIT_FEEDBACK tool calls and their results). Example: user says "1. Output wrong, expected $100" → call with rating=1, user_comment="Output wrong, expected $100". Example: user says "5. Completely Correct" → call with rating=5, user_comment="Completely Correct".'
       input_schema:
         type: object
         properties:

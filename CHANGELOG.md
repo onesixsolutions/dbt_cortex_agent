@@ -7,12 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-05-29
+
 ### Added
 - `agent_grants` config option — list of role names to grant `USAGE` on the agent after creation (`grants` is reserved by dbt for its own privilege handling)
 - `snowflake__grant_cortex_agent_usage` macro for GRANT DDL generation
+- `create_feedback_table` config option — opt-in flag (default `false`) that creates an `AGENT_FEEDBACK` table and `AGENT_SUBMIT_FEEDBACK` stored procedure on each dbt run
+- `feedback_schema` config option — overrides the schema (and optionally database) used for the feedback table and procedure; accepts `'SCHEMA'` or `'DB.SCHEMA'`
+- `feedback_table` config option — fully-qualified override for the feedback table name
+- `snowflake__create_feedback_table` macro for feedback table DDL generation
+- `snowflake__create_feedback_procedure` macro for `AGENT_SUBMIT_FEEDBACK` stored procedure DDL generation; procedure records agent name, Snowflake current user, rating, optional comment, conversation history, and timestamp
 
 ### Changed
 - Integration test suite consolidated to a single model (`cortex_agent_test`) covering all config and spec options, replacing the previous per-feature models (`cortex_agent_basic`, `cortex_agent_with_comment`, `cortex_agent_with_profile`)
+- `AGENT_SUBMIT_FEEDBACK` tool description updated to require fresh rating and comment on each invocation — agents must not reuse or pre-fill values from prior feedback submissions; conversation history must exclude all previous feedback tool calls and their results
 
 ## [0.1.1] - 2026-05-21
 
