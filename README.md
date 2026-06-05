@@ -82,6 +82,7 @@ SHOW AGENTS IN SCHEMA my_db.my_schema;
 | `create_feedback_table` | bool | No | Whether to create the feedback table and procedure. Defaults to `false`. Set to `true` to enable. See [Feedback Tool](#feedback-tool). |
 | `feedback_schema` | string | No | Schema for the feedback table and `AGENT_SUBMIT_FEEDBACK` procedure. Accepts `'SCHEMA'` or `'DB.SCHEMA'`. Defaults to the agent's own database and schema. See [Feedback Tool](#feedback-tool). |
 | `feedback_table` | string | No | Fully-qualified table name override for user feedback. Defaults to `{feedback_schema}.AGENT_FEEDBACK`. Ignored when `create_feedback_table` is `false`. See [Feedback Tool](#feedback-tool). |
+| `feedback_execute_as` | string | No | Execution rights for the `AGENT_SUBMIT_FEEDBACK` procedure. `'caller'` (default) captures the end user via `current_user()`. Use `'owner'` if the calling role lacks `INSERT` on the feedback table. See [Feedback Tool](#feedback-tool). |
 
 ## How It Works
 
@@ -189,6 +190,16 @@ tool_resources:
     identifier: '{{ this.database }}.SHARED_SCHEMA.AGENT_SUBMIT_FEEDBACK'
     name: 'AGENT_SUBMIT_FEEDBACK(VARCHAR, NUMBER, VARCHAR, VARCHAR)'
     type: procedure
+```
+
+By default the procedure runs with `EXECUTE AS CALLER`, so `current_user()` inside the procedure captures the actual end user calling the agent. If the calling role does not have `INSERT` privileges on the feedback table, switch to owner rights:
+
+```sql
+{{ config(
+    materialized='cortex_agent',
+    create_feedback_table=true,
+    feedback_execute_as='owner'
+) }}
 ```
 
 The procedure is recreated on every `dbt run`, so changes to the feedback table schema are picked up automatically. The feedback table uses `CREATE TABLE IF NOT EXISTS`, so existing data is never dropped.

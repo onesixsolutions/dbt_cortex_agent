@@ -1,4 +1,4 @@
-{% macro snowflake__create_feedback_procedure(feedback_db, feedback_schema, feedback_table) %}
+{% macro snowflake__create_feedback_procedure(feedback_db, feedback_schema, feedback_table, execute_as='caller') %}
 
   create or replace procedure
     {{ feedback_db }}.{{ feedback_schema }}.AGENT_SUBMIT_FEEDBACK(
@@ -9,7 +9,7 @@
     )
   returns varchar
   language sql
-  execute as caller
+  execute as {{ execute_as }}
   as
   $$
   begin

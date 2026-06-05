@@ -15,6 +15,10 @@
 --                                       Defaults to {feedback_schema}.AGENT_FEEDBACK.
 --                                       Creates the table (if absent) and a stored procedure
 --                                       named AGENT_SUBMIT_FEEDBACK on every dbt run.
+--   feedback_execute_as (string, optional) : execution rights for the AGENT_SUBMIT_FEEDBACK procedure.
+--                                            Accepts 'caller' (default) or 'owner'.
+--                                            Use 'caller' to capture the end user via current_user().
+--                                            Use 'owner' if the calling role lacks INSERT on the feedback table.
 
 {% materialization cortex_agent, adapter='snowflake' %}
 
@@ -24,6 +28,7 @@
   {%- set create_feedback_table  = config.get('create_feedback_table', default=false) -%}
   {%- set feedback_schema_config = config.get('feedback_schema', default=none) -%}
   {%- set feedback_table         = config.get('feedback_table', default=none) -%}
+  {%- set feedback_execute_as    = config.get('feedback_execute_as', default='caller') -%}
 
   {%- set target_relation = api.Relation.create(
       identifier=this.identifier,
@@ -58,7 +63,7 @@
   {% endcall %}
 
   {% call statement('feedback_procedure') %}
-    {{ dbt_cortex_agent.snowflake__create_feedback_procedure(feedback_db, feedback_schema, feedback_table) }}
+    {{ dbt_cortex_agent.snowflake__create_feedback_procedure(feedback_db, feedback_schema, feedback_table, feedback_execute_as) }}
   {% endcall %}
   {%- endif %}
 

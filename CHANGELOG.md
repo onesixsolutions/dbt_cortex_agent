@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-06-05
+
+### Added
+- `feedback_execute_as` config option — sets execution rights for the `AGENT_SUBMIT_FEEDBACK` procedure; accepts `'caller'` (default, captures end user via `current_user()`) or `'owner'` (use when the calling role lacks `INSERT` on the feedback table)
+
 ## [0.4.1] - 2026-05-29
 
 ### Added
