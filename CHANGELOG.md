@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `mcp_server` materialization for Snowflake-managed MCP servers — model body is the raw MCP server YAML specification (a `tools:` array), sent verbatim to `CREATE OR REPLACE MCP SERVER ... FROM SPECIFICATION`
+- `snowflake__create_mcp_server` macro for DDL generation
+- `snowflake__get_drop_mcp_server_sql` macro for DROP DDL generation
+- Integration tests for the MCP server materialization (`mcp_server_test`), verified via `DESCRIBE MCP SERVER` captured into a table, since `GET_DDL` does not support MCP servers
+
 ## [0.4.2] - 2026-06-05
 
 ### Added
