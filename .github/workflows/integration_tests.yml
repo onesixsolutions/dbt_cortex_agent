@@ -40,6 +40,7 @@ jobs:
         env:
           SNOWFLAKE_TEST_ACCOUNT: ${{ secrets.SNOWFLAKE_TEST_ACCOUNT }}
           SNOWFLAKE_TEST_USER: ${{ secrets.SNOWFLAKE_TEST_USER }}
+          SNOWFLAKE_TEST_AUTHENTICATOR: snowflake_jwt
           SNOWFLAKE_TEST_PRIVATE_KEY_PATH: /tmp/snowflake_private_key.p8
           SNOWFLAKE_TEST_PRIVATE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_TEST_PRIVATE_KEY_PASSPHRASE }}
           SNOWFLAKE_TEST_ROLE: ${{ secrets.SNOWFLAKE_TEST_ROLE }}
@@ -61,6 +62,7 @@ jobs:
         env:
           SNOWFLAKE_TEST_ACCOUNT: ${{ secrets.SNOWFLAKE_TEST_ACCOUNT }}
           SNOWFLAKE_TEST_USER: ${{ secrets.SNOWFLAKE_TEST_USER }}
+          SNOWFLAKE_TEST_AUTHENTICATOR: snowflake_jwt
           SNOWFLAKE_TEST_PRIVATE_KEY_PATH: /tmp/snowflake_private_key.p8
           SNOWFLAKE_TEST_PRIVATE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_TEST_PRIVATE_KEY_PASSPHRASE }}
           SNOWFLAKE_TEST_ROLE: ${{ secrets.SNOWFLAKE_TEST_ROLE }}
