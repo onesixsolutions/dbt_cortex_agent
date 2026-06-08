@@ -1,5 +1,6 @@
 -- Fails if the comment is absent from the agent DDL.
 -- Returns 0 rows on success (standard dbt test contract).
+-- depends_on: {{ ref('cortex_agent_test') }}
 
 select 'comment missing from cortex_agent_test DDL' as error
 where not contains(

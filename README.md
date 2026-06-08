@@ -257,6 +257,50 @@ Notes specific to MCP servers:
 
 Refer to the [Snowflake CREATE MCP SERVER docs](https://docs.snowflake.com/en/sql-reference/sql/create-mcp-server) for the full and up-to-date specification reference.
 
+## Local Development
+
+### Prerequisites
+
+- PowerShell
+- dbt-snowflake installed in your environment
+- A Snowflake account with Cortex Agents enabled
+
+### Setup
+
+1. Copy the env template and fill in your Snowflake details:
+
+```powershell
+# integration_tests/.env is git-ignored
+```
+
+Edit `integration_tests/.env`:
+
+```
+SNOWFLAKE_TEST_ACCOUNT=<orgname>-<accountname>
+SNOWFLAKE_TEST_USER=you@example.com
+SNOWFLAKE_TEST_ROLE=<your_role>
+SNOWFLAKE_TEST_DATABASE=<your_database>
+SNOWFLAKE_TEST_WAREHOUSE=<your_warehouse>
+SNOWFLAKE_TEST_SCHEMA=<your_schema>
+SNOWFLAKE_TEST_AUTHENTICATOR=externalbrowser
+```
+
+> Set `SNOWFLAKE_TEST_AUTHENTICATOR=externalbrowser` for Google SSO (a browser window will open on first connection). For key-pair auth, set it to `snowflake_jwt` and add `SNOWFLAKE_TEST_PRIVATE_KEY_PATH` and `SNOWFLAKE_TEST_PRIVATE_KEY_PASSPHRASE`.
+
+2. Run the integration tests:
+
+```powershell
+.\scripts\run_tests.ps1
+```
+
+This script stages a clean copy of the package to avoid a Windows path-length issue caused by dbt's recursive local package installation, then runs `dbt deps` and `dbt build` from `integration_tests/`.
+
+To install packages only (no build):
+
+```powershell
+.\scripts\run_tests.ps1 -DepsOnly
+```
+
 ## License
 
 Apache 2.0

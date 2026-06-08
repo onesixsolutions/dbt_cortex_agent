@@ -1,3 +1,4 @@
+-- depends_on: {{ ref('cortex_agent_test') }}
 -- Validates that key spec sections are present in the agent DDL:
 --   - orchestration model name
 --   - token budget
