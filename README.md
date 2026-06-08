@@ -204,6 +204,59 @@ By default the procedure runs with `EXECUTE AS CALLER`, so `current_user()` insi
 
 The procedure is recreated on every `dbt run`, so changes to the feedback table schema are picked up automatically. The feedback table uses `CREATE TABLE IF NOT EXISTS`, so existing data is never dropped.
 
+## MCP Servers
+
+The package also ships an `mcp_server` materialization for deploying [Snowflake-managed MCP servers](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-mcp). It works the same way as `cortex_agent`: the model body is the raw MCP server YAML specification (a `tools:` array), wrapped in `CREATE OR REPLACE MCP SERVER ... FROM SPECIFICATION $$ ... $$`.
+
+```sql
+-- models/mcp/data_mcp_server.sql
+{{ config(materialized='mcp_server') }}
+
+tools:
+  - name: "product_search"
+    type: "CORTEX_SEARCH_SERVICE_QUERY"
+    identifier: "{{ ref('product_search_service') }}"
+    title: "Product Search"
+    description: "Cortex Search service over product documentation."
+
+  - name: "revenue_analyst"
+    type: "CORTEX_ANALYST_MESSAGE"
+    identifier: "{{ ref('revenue_semantic_view') }}"
+    title: "Revenue Analyst"
+    description: "Semantic view for revenue analysis."
+
+  - name: "sql_exec_tool"
+    type: "SYSTEM_EXECUTE_SQL"
+    title: "SQL Execution"
+    description: "Execute read-only SQL against Snowflake."
+    config:
+      read_only: true
+      query_timeout: 120
+      warehouse: "MY_WAREHOUSE"
+```
+
+Run it:
+
+```bash
+dbt run --select data_mcp_server
+```
+
+Verify in Snowflake:
+
+```sql
+SHOW MCP SERVERS IN SCHEMA my_db.my_schema;
+DESCRIBE MCP SERVER my_db.my_schema.data_mcp_server;
+```
+
+Notes specific to MCP servers:
+
+- The `tools` array is required and must contain at least one tool. Supported `type` values include `CORTEX_SEARCH_SERVICE_QUERY`, `CORTEX_ANALYST_MESSAGE`, `CORTEX_AGENT_RUN`, `SYSTEM_EXECUTE_SQL`, and `GENERIC`. Each tool that wraps an existing object needs a fully-qualified `identifier` — use `{{ ref() }}` to wire it into the dbt DAG so the MCP server always runs after its upstream objects.
+- Unlike agents, the MCP server DDL has **no `COMMENT` or `PROFILE` clause**, so the `mcp_server` materialization takes no extra config options — everything lives in the spec body.
+- Like `cortex_agent`, every `dbt run` issues `CREATE OR REPLACE MCP SERVER`, so re-runs are fully idempotent, and Jinja (`{{ ref() }}`, `{{ var() }}`, etc.) works anywhere in the spec.
+- To drop an MCP server explicitly, use the helper macro in a dbt operation or post-hook: `{% do run_query(dbt_cortex_agent.snowflake__get_drop_mcp_server_sql(this)) %}` (or run `DROP MCP SERVER IF EXISTS <db>.<schema>.<name>;` directly).
+
+Refer to the [Snowflake CREATE MCP SERVER docs](https://docs.snowflake.com/en/sql-reference/sql/create-mcp-server) for the full and up-to-date specification reference.
+
 ## License
 
 Apache 2.0
