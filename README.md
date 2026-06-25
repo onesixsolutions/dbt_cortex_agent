@@ -83,19 +83,55 @@ SHOW AGENTS IN SCHEMA my_db.my_schema;
 | `feedback_schema` | string | No | Schema for the feedback table and `AGENT_SUBMIT_FEEDBACK` procedure. Accepts `'SCHEMA'` or `'DB.SCHEMA'`. Defaults to the agent's own database and schema. See [Feedback Tool](#feedback-tool). |
 | `feedback_table` | string | No | Fully-qualified table name override for user feedback. Defaults to `{feedback_schema}.AGENT_FEEDBACK`. Ignored when `create_feedback_table` is `false`. See [Feedback Tool](#feedback-tool). |
 | `feedback_execute_as` | string | No | Execution rights for the `AGENT_SUBMIT_FEEDBACK` procedure. `'caller'` (default) captures the end user via `current_user()`. Use `'owner'` if the calling role lacks `INSERT` on the feedback table. See [Feedback Tool](#feedback-tool). |
+| `enable_versioning` | bool | No | Whether to use Snowflake agent versioning. Defaults to `true`. When `true`, uses `CREATE AGENT IF NOT EXISTS` + `ALTER AGENT MODIFY LIVE VERSION` instead of `CREATE OR REPLACE AGENT`, preserving version history across runs. Set to `false` in dev environments to skip versioning overhead. `dbt run --full-refresh` always falls back to `CREATE OR REPLACE`, resetting history. |
+| `auto_commit` | bool | No | When `enable_versioning=true`, automatically snapshot the LIVE version into a new named version after each run. Defaults to `true`. Set to `false` to accumulate spec changes in LIVE without committing, then commit manually via `ALTER AGENT COMMIT`. |
+| `version_comment` | string | No | Comment attached to each committed version snapshot. Only used when `enable_versioning=true` and `auto_commit=true`. |
 
 ## How It Works
 
-The model body is passed verbatim as the agent YAML specification to Snowflake's `CREATE OR REPLACE AGENT ... FROM SPECIFICATION $$ ... $$`. Because it's a direct passthrough:
+The model body is passed verbatim as the agent YAML specification to Snowflake. Because it's a direct passthrough:
 
 - All current and future Snowflake agent YAML options work automatically
 - No package updates needed when Snowflake adds new features
 - You can use Jinja (`{{ ref() }}`, `{{ var() }}`, etc.) anywhere in the spec
 - `{{ ref() }}` calls in `tool_resources` resolve to fully qualified names **and** wire the agent into the dbt DAG — the agent will always run after its upstream semantic views
 
+## Versioning
+
+By default (`enable_versioning=true`, `auto_commit=true`) every `dbt run`:
+
+1. Creates the agent if it doesn't exist (`CREATE AGENT IF NOT EXISTS`)
+2. Restores a LIVE working copy from the last committed version (`ALTER AGENT ADD LIVE VERSION FROM LAST`)
+3. Updates the LIVE copy with the latest compiled spec (`ALTER AGENT MODIFY LIVE VERSION SET SPECIFICATION`)
+4. Commits the LIVE copy as a new named version — `VERSION$1`, `VERSION$2`, … (`ALTER AGENT COMMIT`)
+
+Version history accumulates across runs. `dbt run --full-refresh` falls back to `CREATE OR REPLACE AGENT`, resetting all history.
+
+**Disable versioning in dev** to avoid the overhead when iterating quickly:
+
+```yaml
+# dbt_project.yml
+models:
+  my_project:
+    agents:
+      +enable_versioning: false
+```
+
+Or per-model:
+
+```sql
+{{ config(materialized='cortex_agent', enable_versioning=false) }}
+```
+
+**Commit manually** by setting `auto_commit=false` — the materialization keeps the LIVE version open across runs and you commit explicitly when ready:
+
+```sql
+{{ config(materialized='cortex_agent', auto_commit=false) }}
+```
+
 ## Idempotency
 
-Every `dbt run` issues `CREATE OR REPLACE AGENT`, so re-runs are safe and fully idempotent. `dbt run --full-refresh` behaves identically.
+With versioning enabled (default), every `dbt run` preserves history — re-runs are safe and create a new committed version. With `enable_versioning=false`, every run issues `CREATE OR REPLACE AGENT`. `dbt run --full-refresh` always uses `CREATE OR REPLACE AGENT`, resetting all version history.
 
 ## Supported Tools in Specification
 

@@ -8,11 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `enable_versioning` config option — controls Snowflake Cortex Agent versioning; when `true` (default), uses `CREATE AGENT IF NOT EXISTS` + `ALTER AGENT MODIFY LIVE VERSION SET SPECIFICATION` instead of `CREATE OR REPLACE AGENT`, preserving version history across runs. `dbt run --full-refresh` falls back to `CREATE OR REPLACE`, resetting history. Set to `false` in dev environments to skip versioning overhead.
+- `auto_commit` config option — when `enable_versioning=true`, automatically snapshot the LIVE version into a new immutable named version (`VERSION$1`, `VERSION$2`, …) after each run. Defaults to `true`. Set to `false` to accumulate spec changes in LIVE without committing, then commit manually via `ALTER AGENT COMMIT`.
+- `version_comment` config option — optional comment string attached to the committed version snapshot; only used when `enable_versioning=true` and `auto_commit=true`.
+- `snowflake__create_cortex_agent_if_not_exists` macro — `CREATE AGENT IF NOT EXISTS` DDL
+- `snowflake__add_cortex_agent_live_version` macro — `ALTER AGENT ADD LIVE VERSION FROM LAST` DDL; recreates the LIVE working copy after `COMMIT` consumes it
+- `snowflake__alter_cortex_agent_live_spec` macro — `ALTER AGENT MODIFY LIVE VERSION SET SPECIFICATION` DDL
+- `snowflake__commit_cortex_agent_version` macro — `ALTER AGENT COMMIT` DDL
 - `mcp_server` materialization for Snowflake-managed MCP servers — model body is the raw MCP server YAML specification (a `tools:` array), sent verbatim to `CREATE OR REPLACE MCP SERVER ... FROM SPECIFICATION`
 - `snowflake__create_mcp_server` macro for DDL generation
 - `snowflake__get_drop_mcp_server_sql` macro for DROP DDL generation
 - Integration tests for the MCP server materialization (`mcp_server_test`), verified via `DESCRIBE MCP SERVER` captured into a table, since `GET_DDL` does not support MCP servers
 - Local development setup: `integration_tests/.env` template, `scripts/run_tests.ps1` runner, and `profiles.yml` SSO support (`externalbrowser` authenticator)
+
+### Changed
+- `enable_versioning` now defaults to `true` — versioning is on by default for all `cortex_agent` models; set `enable_versioning: false` in `dbt_project.yml` or per-model config to opt out (e.g. in dev environments)
 
 ### Fixed
 - Singular integration tests now declare `-- depends_on: {{ ref('cortex_agent_test') }}` so `dbt build` runs models before tests

@@ -22,5 +22,8 @@ models:
       alias: mcp_server_test
       tags: ['integration']
 
+  - name: cortex_agent_versioned_test_versions
+    description: "Captures SHOW VERSIONS IN AGENT output for cortex_agent_versioned_test so singular tests can assert on committed version count."
+
   - name: mcp_server_test_describe
     description: "Captures DESCRIBE MCP SERVER output for mcp_server_test so singular tests can assert on the spec (GET_DDL does not support MCP servers)."
