@@ -7,7 +7,8 @@
         tags=['integration'],
         agent_grants=['dbt_demo_role'],
         create_feedback_table=true,
-        feedback_execute_as='owner'
+        feedback_execute_as='owner',
+        enable_versioning=false
     )
 }}
 
