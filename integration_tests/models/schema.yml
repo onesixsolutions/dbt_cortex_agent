@@ -2,10 +2,23 @@ version: 2
 
 models:
   - name: base_table
-    description: "Minimal base table used by test_semantic_view."
+    description: "Minimal base table used by test_semantic_view and test_search_service."
 
   - name: test_semantic_view
     description: "Minimal semantic view referenced via ref() in cortex_agent_test."
+
+  - name: test_search_service
+    description: "Comprehensive Cortex Search Service exercising every config option — search_column, attributes, target_lag, primary_key, auto_suspend, comment, and grants. `warehouse` is intentionally left unset to test the fallback to target.warehouse. auto_suspend is set to the minimum (1800s) to limit serving compute cost on this test object."
+    config:
+      alias: test_search_service
+      search_column: description
+      attributes: ['id']
+      target_lag: '7 days'
+      primary_key: ['id']
+      auto_suspend: 1800
+      comment: 'Full integration test search service — exercises every config option'
+      tags: ['integration']
+      search_service_grants: ['dbt_demo_role']
 
   - name: cortex_agent_test
     description: "Comprehensive agent exercising every config and spec option — comment, profile, alias, tags, orchestration budget, all instruction fields, both tool types with full input_schema, tool_resources, and grants."
@@ -27,3 +40,6 @@ models:
 
   - name: mcp_server_test_describe
     description: "Captures DESCRIBE MCP SERVER output for mcp_server_test so singular tests can assert on the spec (GET_DDL does not support MCP servers)."
+
+  - name: test_search_service_describe
+    description: "Captures DESCRIBE CORTEX SEARCH SERVICE output for test_search_service so singular tests can assert on its properties (GET_DDL support for search services is not documented)."

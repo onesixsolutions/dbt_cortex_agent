@@ -7,6 +7,7 @@ A custom dbt materialization for deploying [Snowflake Cortex Agents](https://doc
 - dbt >= 1.0.0
 - Snowflake adapter (`dbt-snowflake`)
 - Snowflake account with Cortex Agents enabled
+- Snowflake account with Cortex Search enabled (for `cortex_search_service` models)
 
 ## Installation
 
@@ -293,6 +294,76 @@ Notes specific to MCP servers:
 
 Refer to the [Snowflake CREATE MCP SERVER docs](https://docs.snowflake.com/en/sql-reference/sql/create-mcp-server) for the full and up-to-date specification reference.
 
+## Cortex Search Services
+
+The package also ships a `cortex_search_service` materialization for deploying [Snowflake Cortex Search Services](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/cortex-search-overview) — the backing search index used by a `cortex_search` tool on a Cortex Agent, or a `CORTEX_SEARCH_SERVICE_QUERY` tool on an MCP server.
+
+Unlike `cortex_agent` and `mcp_server`, this materialization is **not** a YAML passthrough. The model body is a normal dbt `SELECT` query, which becomes the `AS <query>` clause of `CREATE CORTEX SEARCH SERVICE`. All other DDL clauses (search column, attributes, warehouse, target lag, etc.) come from `config()`.
+
+Only the single-index syntax (`ON <search_column>` + `ATTRIBUTES`) is supported. If you need to search over multiple text fields, blend them into one column in the model's `SELECT` (e.g. `short_description || ' ' || long_description || ' ' || synonyms as search_text`) and keep the individual columns as `ATTRIBUTES` for filtering/display.
+
+> `PRIMARY KEY` columns must be `TEXT` — Cortex Search Service rejects numeric types for `PRIMARY KEY` regardless of precision/scale, failing with `Invalid column type NUMBER(n,0) for source query column <col>`. Cast numeric ID columns to a string type, e.g. `id::varchar`, before using them in `primary_key`.
+
+```sql
+-- models/search/product_search.sql
+{{ config(
+    materialized='cortex_search_service',
+    search_column='search_text',
+    attributes=['id', 'title', 'category'],
+    target_lag='1 hour',
+    primary_key=['id'],
+    comment='Product search index for the shopping assistant agent'
+) }}
+
+select
+    id,
+    title,
+    category,
+    short_description || ' ' || long_description || ' ' || synonyms as search_text
+from {{ ref('products') }}
+```
+
+Run it:
+
+```bash
+dbt run --select product_search
+```
+
+Verify in Snowflake:
+
+```sql
+SHOW CORTEX SEARCH SERVICES IN SCHEMA my_db.my_schema;
+DESCRIBE CORTEX SEARCH SERVICE my_db.my_schema.product_search;
+```
+
+### Config Options
+
+| Option | Type | Required | Description |
+|---|---|---|---|
+| `materialized` | string | Yes | Must be `'cortex_search_service'` |
+| `search_column` | string | Yes | Column that Cortex Search indexes and searches over. Immutable after creation — changing it requires `dbt run --full-refresh`. |
+| `attributes` | list | Yes | Non-empty list of column names to index as filterable/returnable attributes. Snowflake requires at least one. |
+| `target_lag` | string | Yes | Maximum staleness of the index relative to the source query, e.g. `'1 hour'`, `'7 days'`. No Snowflake default. |
+| `warehouse` | string | No | Warehouse used to refresh and build the index. Defaults to the warehouse in your dbt `target`. |
+| `primary_key` | list | No | Column(s) uniquely identifying each row; enables optimized incremental refresh. |
+| `embedding_model` | string | No | Vector embedding model, e.g. `'snowflake-arctic-embed-m-v1.5'`. Immutable after creation. |
+| `refresh_mode` | string | No | `INCREMENTAL` (default) or `FULL`. Immutable after creation. |
+| `initialize` | string | No | `ON_CREATE` (default, synchronous) or `ON_SCHEDULE` (deferred). Immutable after creation. |
+| `full_index_build_interval_days` | number | No | Soft target for periodic full index rebuilds. Only meaningful with `primary_key` set. |
+| `request_logging` | bool | No | Enables request logging for monitoring queries. Defaults to `false`. |
+| `auto_suspend` | number | No | Seconds of inactivity before suspending. Minimum `1800` (30 minutes). |
+| `comment` | string | No | Descriptive text visible in Snowflake. |
+| `search_service_grants` | list | No | Role names to grant `USAGE` on the search service, e.g. `['my_role']`. |
+
+### How It Works
+
+- **First run for a service, or `dbt run --full-refresh`:** issues `CREATE OR REPLACE CORTEX SEARCH SERVICE ... AS <query>` with the full set of configured options.
+- **Every other run:** issues `ALTER CORTEX SEARCH SERVICE ... SET` to update only the mutable properties (`target_lag`, `warehouse`, `comment`, `auto_suspend`, `request_logging`, `full_index_build_interval_days`, `attributes`, `primary_key`) in place.
+
+This split matters because `CREATE OR REPLACE` forces Snowflake to fully rebuild the search index from scratch. Unlike `mcp_server`, which issues `CREATE OR REPLACE` on every run because MCP server definitions are cheap to redefine, `cortex_search_service` avoids doing that on steady-state runs — recreating the service on every `dbt run` would discard Cortex Search's own incremental refresh and be wasteful and slow for anything beyond trivial data volumes.
+
+`search_column`, `embedding_model`, `refresh_mode`, `initialize`, and the defining query itself are immutable once the service is created. To change any of those, run `dbt run --full-refresh`.
+
 ## Local Development
 
 ### Prerequisites
@@ -330,6 +401,8 @@ SNOWFLAKE_TEST_AUTHENTICATOR=externalbrowser
 ```
 
 This script stages a clean copy of the package to avoid a Windows path-length issue caused by dbt's recursive local package installation, then runs `dbt deps` and `dbt build` from `integration_tests/`.
+
+> CI always runs against a freshly created schema, so it only ever exercises the `cortex_search_service` CREATE path. To verify the ALTER-in-place path, run `.\scripts\run_tests.ps1` twice in a row against the same persistent dev schema and confirm the second run issues `ALTER CORTEX SEARCH SERVICE ... SET` instead of another `CREATE OR REPLACE`.
 
 To install packages only (no build):
 

@@ -20,9 +20,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `snowflake__get_drop_mcp_server_sql` macro for DROP DDL generation
 - Integration tests for the MCP server materialization (`mcp_server_test`), verified via `DESCRIBE MCP SERVER` captured into a table, since `GET_DDL` does not support MCP servers
 - Local development setup: `integration_tests/.env` template, `scripts/run_tests.ps1` runner, and `profiles.yml` SSO support (`externalbrowser` authenticator)
+- `cortex_search_service` materialization for [Snowflake Cortex Search Services](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/cortex-search-overview) — unlike `cortex_agent`/`mcp_server`, the model body is a normal dbt `SELECT` query (not a passthrough YAML spec) that becomes the `AS <query>` clause; supports the single-index (`ON` + `ATTRIBUTES`) syntax only
+- `search_column`, `attributes`, and `target_lag` required config options for `cortex_search_service` — Snowflake has no default for any of these
+- `warehouse`, `primary_key`, `embedding_model`, `refresh_mode`, `initialize`, `full_index_build_interval_days`, `request_logging`, `auto_suspend`, and `comment` optional config options for `cortex_search_service`
+- `search_service_grants` config option — list of role names to grant `USAGE` on the search service after creation, mirrors `agent_grants`
+- Refresh behavior: `cortex_search_service` issues `CREATE OR REPLACE CORTEX SEARCH SERVICE` only on the first run for a given service or on `dbt run --full-refresh`; subsequent runs use `ALTER CORTEX SEARCH SERVICE ... SET` to update mutable properties in place, avoiding a full index rebuild on every `dbt run`
+- `snowflake__create_cortex_search_service` macro for CREATE DDL generation
+- `snowflake__alter_cortex_search_service` macro for ALTER ... SET DDL generation — emits one `ALTER CORTEX SEARCH SERVICE ... SET <property> = <value>;` statement per scalar mutable property (target_lag, warehouse, comment, auto_suspend, request_logging, full_index_build_interval_days) rather than combining them into a single `SET` clause, since Snowflake rejected a combined multi-property `SET` clause with a syntax error; `primary_key` and `attributes` each use their own dedicated `SET PRIMARY KEY = (...)` / `SET ATTRIBUTES (...)` statement forms per Snowflake's syntax reference
+- `snowflake__get_drop_cortex_search_service_sql` macro for DROP DDL generation
+- `snowflake__grant_cortex_search_service_usage` macro for GRANT DDL generation
+- Integration tests for the Cortex Search Service materialization (`test_search_service`), verified via `DESCRIBE CORTEX SEARCH SERVICE` captured into a table, since `GET_DDL` support for search services is not documented
 
 ### Changed
 - `enable_versioning` now defaults to `true` — versioning is on by default for all `cortex_agent` models; set `enable_versioning: false` in `dbt_project.yml` or per-model config to opt out (e.g. in dev environments)
+- `base_table` integration test model no longer creates `TEST_SEARCH_SERVICE` via a raw-SQL `post_hook`; it's now a separate `test_search_service` model using the `cortex_search_service` materialization
 
 ### Fixed
 - Singular integration tests now declare `-- depends_on: {{ ref('cortex_agent_test') }}` so `dbt build` runs models before tests
