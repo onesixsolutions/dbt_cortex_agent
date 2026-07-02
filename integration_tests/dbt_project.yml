@@ -18,6 +18,6 @@ models:
     +schema: INTEGRATION_TESTS
 
 vars:
-  # Points at the Cortex Search Service created by base_table's post_hook.
+  # Points at the Cortex Search Service created by the test_search_service model.
   # The schema suffix matches dbt's custom-schema behaviour (target.schema ~ '_INTEGRATION_TESTS').
   test_cortex_search_service: "{{ target.database }}.{{ target.schema }}_INTEGRATION_TESTS.TEST_SEARCH_SERVICE"
