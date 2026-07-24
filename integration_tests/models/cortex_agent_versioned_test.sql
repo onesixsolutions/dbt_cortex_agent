@@ -39,3 +39,7 @@ tools:
 tool_resources:
   analyst_tool:
     semantic_view: '{{ ref('test_semantic_view') }}'
+    execution_environment:
+      type: warehouse
+      warehouse: DBT_WH
+      query_timeout: 60
