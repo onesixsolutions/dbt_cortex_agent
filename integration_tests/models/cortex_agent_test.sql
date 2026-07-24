@@ -83,6 +83,9 @@ skills: []
 
 tool_resources:
   analyst_tool:
+    execution_environment:
+      type: warehouse
+      warehouse: '{{ env_var("SNOWFLAKE_TEST_ANALYST_WAREHOUSE", "SQLADHOC_WH") }}'
     semantic_view: '{{ ref('test_semantic_view') }}'
   search_tool:
     name: '{{ var("test_cortex_search_service") }}'

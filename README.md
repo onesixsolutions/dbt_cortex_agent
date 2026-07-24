@@ -390,6 +390,8 @@ SNOWFLAKE_TEST_DATABASE=<your_database>
 SNOWFLAKE_TEST_WAREHOUSE=<your_warehouse>
 SNOWFLAKE_TEST_SCHEMA=<your_schema>
 SNOWFLAKE_TEST_AUTHENTICATOR=externalbrowser
+# Optional — warehouse used by the analyst_tool's execution_environment. Defaults to SQLADHOC_WH.
+SNOWFLAKE_TEST_ANALYST_WAREHOUSE=<your_warehouse>
 ```
 
 > Set `SNOWFLAKE_TEST_AUTHENTICATOR=externalbrowser` for Google SSO (a browser window will open on first connection). For key-pair auth, set it to `snowflake_jwt` and add `SNOWFLAKE_TEST_PRIVATE_KEY_PATH` and `SNOWFLAKE_TEST_PRIVATE_KEY_PASSPHRASE`.
