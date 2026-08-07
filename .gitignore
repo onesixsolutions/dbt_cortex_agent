@@ -7,4 +7,6 @@ integration_tests/.env
 integration_tests/.user.yml
 integration_tests/dbt_packages/
 integration_tests/package-lock.yml
-graphify-out
+graphify-out.claude/
+.DS_Store
+.claude/

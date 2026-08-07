@@ -56,7 +56,7 @@ tool_resources:
   revenue_analyst:
     execution_environment:
       type: "warehouse"
-      warehouse: ""
+      warehouse: "DBT_WH"
     semantic_view: '{{ ref("revenue_semantic_view") }}'
 ```
 
