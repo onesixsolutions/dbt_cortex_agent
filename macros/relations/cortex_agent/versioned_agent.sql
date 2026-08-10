@@ -61,3 +61,27 @@
   {%- endif %}
 
 {% endmacro %}
+
+
+-- Promotes the newest committed version to DEFAULT — the version end users and
+-- Snowsight see as "In use".
+--
+-- Why this is required: COMMIT creates a version but does NOT move the DEFAULT
+-- pointer. Snowflake only tracks the latest committed version *implicitly*, and
+-- that implicit behaviour stops the moment DEFAULT_VERSION is set explicitly by
+-- anything out-of-band (notably Snowsight's Publish button). From then on every
+-- dbt deploy commits a version that no user ever sees. Setting it explicitly on
+-- each commit makes promotion deterministic and self-healing: a pinned agent is
+-- un-stuck by the next dbt run.
+--
+-- 'LAST' is used rather than a computed VERSION$N so the statement needs no version
+-- bookkeeping and stays idempotent. Note the quotes are required: the unquoted forms
+-- (LAST, VERSION$3, "VERSION$3") are all rejected with a SQL compilation error, despite
+-- what the Snowflake docs show — only the single-quoted string form parses.
+{% macro snowflake__set_cortex_agent_default_version(relation) %}
+
+  alter agent
+    {{ relation.database }}.{{ relation.schema }}.{{ relation.identifier }}
+  set default_version = 'LAST'
+
+{% endmacro %}

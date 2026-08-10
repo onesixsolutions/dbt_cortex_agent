@@ -32,6 +32,16 @@
 --                                       LIVE without committing, then commit manually.
 --   version_comment (string, optional) : comment attached to the committed version snapshot.
 --                                        Only used when enable_versioning=true and auto_commit=true.
+--   set_default_version (bool, optional) : promote the newly committed version to DEFAULT so
+--                                          end users (and Snowsight's "In use") get it.
+--                                          Defaults to true. Only used when enable_versioning=true
+--                                          and auto_commit=true.
+--                                          COMMIT alone does NOT move the DEFAULT pointer: Snowflake
+--                                          only follows the latest version implicitly, and stops doing
+--                                          so as soon as DEFAULT_VERSION is set out-of-band (e.g. by
+--                                          Snowsight's Publish button) — after which every dbt deploy
+--                                          is invisible to users. Set false only if you promote
+--                                          versions yourself (e.g. staged releases via aliases).
 
 {% materialization cortex_agent, adapter='snowflake' %}
 
@@ -45,6 +55,7 @@
   {%- set enable_versioning      = config.get('enable_versioning', default=true) -%}
   {%- set auto_commit            = config.get('auto_commit', default=true) -%}
   {%- set version_comment        = config.get('version_comment', default=none) -%}
+  {%- set set_default_version    = config.get('set_default_version', default=true) -%}
 
   {%- set target_relation = api.Relation.create(
       identifier=this.identifier,
@@ -85,30 +96,44 @@
 
   {%- if enable_versioning and not should_full_refresh() %}
 
-  {# Determine whether any committed versions exist.
-     On first run (agent absent or no committed versions) skip MODIFY LIVE VERSION —
-     the LIVE working copy does not exist until after the first COMMIT.
-     On subsequent runs COMMIT has already established LIVE, so we can update it. #}
+  {# Inspect existing versions to decide whether LIVE needs (re)creating.
+     SHOW VERSIONS returns one row per committed version (name = VERSION$N) plus, when a
+     LIVE working copy exists, one row with an empty name.
+       - no committed versions  : first run — LIVE does not exist yet, skip ADD LIVE VERSION.
+       - committed, no LIVE     : the normal steady state after COMMIT consumed LIVE — restore it.
+       - committed, LIVE exists : ADD LIVE VERSION would fail with 099106 ("There is already a
+                                  live version"), which is the state a prior CREATE OR REPLACE
+                                  (e.g. dbt run --full-refresh) leaves behind — skip the add and
+                                  modify the existing LIVE in place. #}
   {%- set _show_agents_sql -%}
     SHOW AGENTS LIKE '{{ target_relation.identifier }}' IN SCHEMA {{ target_relation.database }}.{{ target_relation.schema }}
   {%- endset -%}
   {%- set _agent_rows = run_query(_show_agents_sql) -%}
-  {%- set _has_committed_versions = false -%}
+  {%- set _ns = namespace(has_committed=false, has_live=false) -%}
   {%- if _agent_rows | length > 0 -%}
     {%- set _show_versions_sql -%}
       SHOW VERSIONS IN AGENT {{ target_relation.database }}.{{ target_relation.schema }}.{{ target_relation.identifier }}
     {%- endset -%}
     {%- set _version_rows = run_query(_show_versions_sql) -%}
-    {%- set _has_committed_versions = (_version_rows | length) > 0 -%}
+    {%- for _r in _version_rows.rows -%}
+      {%- if _r['name'] -%}
+        {%- set _ns.has_committed = true -%}
+      {%- else -%}
+        {%- set _ns.has_live = true -%}
+      {%- endif -%}
+    {%- endfor -%}
   {%- endif -%}
+  {%- set _has_committed_versions = _ns.has_committed -%}
+  {%- set _has_live_version = _ns.has_live -%}
 
   {% call statement('main') %}
     {{ dbt_cortex_agent.snowflake__create_cortex_agent_if_not_exists(target_relation, sql, comment, profile) }}
   {% endcall %}
 
-  {%- if _has_committed_versions %}
+  {%- if _has_committed_versions and not _has_live_version %}
   {# COMMIT consumes LIVE and does not recreate it. Explicitly restore LIVE from the
-     last committed version before modifying, so MODIFY LIVE VERSION has a target. #}
+     last committed version before modifying, so MODIFY LIVE VERSION has a target.
+     Skipped when a LIVE already exists — adding a second one errors with 099106. #}
   {% call statement('add_live') %}
     {{ dbt_cortex_agent.snowflake__add_cortex_agent_live_version(target_relation) }}
   {% endcall %}
@@ -122,6 +147,15 @@
   {% call statement('commit_version') %}
     {{ dbt_cortex_agent.snowflake__commit_cortex_agent_version(target_relation, version_comment) }}
   {% endcall %}
+
+  {%- if set_default_version %}
+  {# COMMIT does not move the DEFAULT pointer. Promote explicitly so the version just
+     deployed is the one users get, and so an agent whose pointer was pinned
+     out-of-band (e.g. via Snowsight) is un-stuck on the next run. #}
+  {% call statement('set_default_version') %}
+    {{ dbt_cortex_agent.snowflake__set_cortex_agent_default_version(target_relation) }}
+  {% endcall %}
+  {%- endif %}
   {%- endif %}
 
   {%- else %}
