@@ -87,6 +87,7 @@ SHOW AGENTS IN SCHEMA my_db.my_schema;
 | `enable_versioning` | bool | No | Whether to use Snowflake agent versioning. Defaults to `true`. When `true`, uses `CREATE AGENT IF NOT EXISTS` + `ALTER AGENT MODIFY LIVE VERSION` instead of `CREATE OR REPLACE AGENT`, preserving version history across runs. Set to `false` in dev environments to skip versioning overhead. `dbt run --full-refresh` always falls back to `CREATE OR REPLACE`, resetting history. |
 | `auto_commit` | bool | No | When `enable_versioning=true`, automatically snapshot the LIVE version into a new named version after each run. Defaults to `true`. Set to `false` to accumulate spec changes in LIVE without committing, then commit manually via `ALTER AGENT COMMIT`. |
 | `version_comment` | string | No | Comment attached to each committed version snapshot. Only used when `enable_versioning=true` and `auto_commit=true`. |
+| `set_default_version` | bool | No | Promote the newly committed version to DEFAULT so end users (and Snowsight's "In use") get it. Defaults to `true`. Only used when `enable_versioning=true` and `auto_commit=true`. `COMMIT` alone does not move the DEFAULT pointer — see [Version promotion](#version-promotion). |
 
 ## How It Works
 
@@ -102,11 +103,30 @@ The model body is passed verbatim as the agent YAML specification to Snowflake. 
 By default (`enable_versioning=true`, `auto_commit=true`) every `dbt run`:
 
 1. Creates the agent if it doesn't exist (`CREATE AGENT IF NOT EXISTS`)
-2. Restores a LIVE working copy from the last committed version (`ALTER AGENT ADD LIVE VERSION FROM LAST`)
+2. Restores a LIVE working copy from the last committed version (`ALTER AGENT ADD LIVE VERSION FROM LAST`), unless a LIVE copy already exists
 3. Updates the LIVE copy with the latest compiled spec (`ALTER AGENT MODIFY LIVE VERSION SET SPECIFICATION`)
 4. Commits the LIVE copy as a new named version — `VERSION$1`, `VERSION$2`, … (`ALTER AGENT COMMIT`)
+5. Promotes that new version to DEFAULT (`ALTER AGENT SET DEFAULT_VERSION = 'LAST'`)
 
 Version history accumulates across runs. `dbt run --full-refresh` falls back to `CREATE OR REPLACE AGENT`, resetting all history.
+
+### Version promotion
+
+Step 5 matters: **`COMMIT` alone does not move the DEFAULT pointer.** Snowflake treats the latest committed version as the default only *implicitly*, and that stops the moment `DEFAULT_VERSION` is set explicitly by anything out-of-band — most commonly Snowsight's **Publish** button. Once that happens the pointer is pinned, and every later `dbt run` commits a version that no user ever sees: Snowsight keeps showing an old version as "In use" while history piles up behind it.
+
+Promoting explicitly on every commit makes deploys deterministic and self-healing — a pinned agent is un-stuck by the next `dbt run`. Opt out with `set_default_version=false` if you promote versions yourself (e.g. staged releases via aliases):
+
+```sql
+{{ config(materialized='cortex_agent', set_default_version=false) }}
+```
+
+Check which version is live:
+
+```sql
+SHOW VERSIONS IN AGENT my_db.my_schema.my_agent;  -- is_default = true marks the live one
+```
+
+> Note: `SET DEFAULT_VERSION` requires a **quoted** value — `'LAST'` or `'VERSION$3'`. The unquoted forms shown in some Snowflake docs (`LAST`, `VERSION$3`) fail with a SQL compilation error.
 
 **Disable versioning in dev** to avoid the overhead when iterating quickly:
 
