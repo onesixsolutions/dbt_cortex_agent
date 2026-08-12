@@ -15,8 +15,16 @@ Add to your project's `packages.yml`:
 
 ```yaml
 packages:
-  - git: "https://github.com/<your-org>/dbt_cortex_agent"
-    revision: "0.1.0"
+  - git: "https://github.com/onesixsolutions/dbt_cortex_agent"
+    revision: "0.5.0"
+```
+
+Once this package is listed on the [dbt Package Hub](https://hub.getdbt.com/), you'll be able to install it via:
+
+```yaml
+packages:
+  - package: onesixsolutions/dbt_cortex_agent
+    version: [">=0.5.0", "<0.6.0"]
 ```
 
 Then run:
@@ -432,4 +440,4 @@ To install packages only (no build):
 
 ## License
 
-Apache 2.0
+[Apache License 2.0](LICENSE)
