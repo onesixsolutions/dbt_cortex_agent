@@ -16,7 +16,7 @@ Add to your project's `packages.yml`:
 ```yaml
 packages:
   - git: "https://github.com/onesixsolutions/dbt_cortex_agent"
-    revision: "0.5.0"
+    revision: "1.0.0"
 ```
 
 Once this package is listed on the [dbt Package Hub](https://hub.getdbt.com/), you'll be able to install it via:
@@ -24,7 +24,7 @@ Once this package is listed on the [dbt Package Hub](https://hub.getdbt.com/), y
 ```yaml
 packages:
   - package: onesixsolutions/dbt_cortex_agent
-    version: [">=0.5.0", "<0.6.0"]
+    version: [">=1.0.0", "<2.0.0"]
 ```
 
 Then run:
