@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-12
+
 ### Added
 - `enable_versioning` config option — controls Snowflake Cortex Agent versioning; when `true` (default), uses `CREATE AGENT IF NOT EXISTS` + `ALTER AGENT MODIFY LIVE VERSION SET SPECIFICATION` instead of `CREATE OR REPLACE AGENT`, preserving version history across runs. `dbt run --full-refresh` falls back to `CREATE OR REPLACE`, resetting history. Set to `false` in dev environments to skip versioning overhead.
 - `auto_commit` config option — when `enable_versioning=true`, automatically snapshot the LIVE version into a new immutable named version (`VERSION$1`, `VERSION$2`, …) after each run. Defaults to `true`. Set to `false` to accumulate spec changes in LIVE without committing, then commit manually via `ALTER AGENT COMMIT`.
