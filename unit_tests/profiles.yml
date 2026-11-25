@@ -1,0 +1,21 @@
+# Profiles for the offline macro unit tests. No real credentials are needed or used.
+#
+#   duckdb            : dbt v1. `dbt compile` on dbt Core opens a connection, so the tests
+#                       use an in-memory DuckDB database (pip install dbt-duckdb).
+#   offline_snowflake : dbt v2. The v2 engine compiles without connecting when static
+#                       analysis is off, so placeholder Snowflake values are enough.
+unit_tests:
+  target: duckdb
+  outputs:
+    duckdb:
+      type: duckdb
+      path: ":memory:"
+    offline_snowflake:
+      type: snowflake
+      account: offline
+      user: offline
+      password: offline
+      role: offline
+      database: OFFLINE_DB
+      warehouse: OFFLINE_WH
+      schema: OFFLINE

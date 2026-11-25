@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - dbt v2 support. The dbt v2 engine rejects config keys it does not know (`Ignored unexpected key`, dbt1060), which made every model using a package option fail to parse. All package options can now be set under `meta` — e.g. `config(materialized='cortex_agent', meta={'comment': '...', 'agent_grants': [...]})` — which works on dbt v1 and v2. Top-level keys keep working on dbt v1, so existing projects are unaffected until they upgrade. When an option is set in both places the `meta` value wins.
 - `get_package_config` macro — reads a package option from `meta`, falling back to the top-level config key
 - CI now runs the integration tests on both dbt v1 (`dbt-snowflake`) and dbt v2 (`dbt`)
+- Offline macro unit tests in `unit_tests/`, run with `scripts/run_unit_tests.sh` on dbt v1 and v2 without a Snowflake connection, and in CI on every pull request
+- Integration tests for grants on agents, MCP servers, search services and the feedback procedure; for `revoke_unlisted_grants`; for `COPY GRANTS` across a replace; for the search service ALTER path; and for version increments on a second run
+- CI runs the integration models twice (the second time with `--vars '{second_run: true}'`) so the ALTER, second-version and `COPY GRANTS` paths are exercised
 
 - `mcp_server_grants` config option for `mcp_server` — list of role names to grant `USAGE` on the MCP server, re-issued after every run
 - `snowflake__grant_mcp_server_usage` macro

@@ -1,0 +1,15 @@
+name: dbt_cortex_agent_unit_tests
+version: "1.0.0"
+config-version: 2
+
+# Offline unit tests for the package's macros. Nothing here connects to Snowflake:
+# every test is a model whose body calls package macros and asserts on what they return,
+# so `dbt compile` is the test run. See README "Unit tests".
+profile: unit_tests
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"

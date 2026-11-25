@@ -594,6 +594,47 @@ Things to know:
 - **Ground truth is a `VARIANT`.** Use `PARSE_JSON` or `TO_VARIANT` in the dataset model; `OBJECT_CONSTRUCT` returns an `OBJECT` and is not accepted.
 - **Privileges to start a run:** `USAGE` (or `OWNERSHIP`) **and** `MONITOR` (or `OWNERSHIP`) on the agent — grant the latter with `agent_grants: {'monitor': [...]}` — plus `EXECUTE TASK ON ACCOUNT`, `READ` on the config stage, `CREATE TASK` and `CREATE FILE FORMAT` on the current schema, `CREATE DATASET` on the dataset's schema when creating one, a Cortex database role, and access to every tool the agent uses. If the account restricts model access and the role cannot use the judge model, Snowflake reports **scores of 0 with no error**.
 
+## Testing
+
+The package has two test suites.
+
+### Unit tests (offline)
+
+`unit_tests/` is a small dbt project whose models call the package's macros and assert on what they return — the SQL generated for every `CREATE`, `ALTER`, `DROP`, `GRANT` and `REVOKE`, how config options are read from `meta`, how grants options are normalised, and the name-matching and drift-detection logic. A failed assertion is a compiler error, so `dbt compile` is the test run. Nothing connects to Snowflake.
+
+```bash
+./scripts/run_unit_tests.sh
+```
+
+The script uses whichever `dbt` is on your `PATH`:
+
+- **dbt v1** — also needs `dbt-duckdb` (`pip install dbt-core dbt-duckdb`); dbt Core opens a connection on compile, and an in-memory DuckDB database gives it one.
+- **dbt v2** — `pip install dbt`; compiles offline with placeholder Snowflake values.
+
+It then re-compiles the cases in `unit_tests/expected_errors.txt`, each of which must *fail* with a specific message (for example, trying to grant `OWNERSHIP`).
+
+To add a test, add assertions to a model in `unit_tests/models/` using the helpers in `unit_tests/macros/assertions.sql` (`assert_equal`, `assert_sql`, `assert_contains`, ...). Keep them inside the model's `{% if execute %}` block.
+
+### Integration tests (Snowflake)
+
+`integration_tests/` deploys real agents, MCP servers, search services and evaluation configs into a Snowflake schema and asserts on the result with singular tests. Because `SHOW` and `DESCRIBE` cannot be used as subqueries, "capture" models (`*_describe`, `*_versions`, `*_grants`) run the statement in a pre-hook and store its output in a table for the tests to read.
+
+Some behaviour only appears on a **second** run against existing objects: the `ALTER CORTEX SEARCH SERVICE` path, committing a second agent version, and `COPY GRANTS` on `CREATE OR REPLACE AGENT`. CI therefore runs the models twice — the second time with `--vars '{second_run: true}'` — before running the tests with the same var:
+
+```bash
+cd integration_tests
+dbt deps
+dbt run
+dbt run --vars '{second_run: true}'
+dbt test --vars '{second_run: true}'
+```
+
+Tests that depend on the second run pass trivially when the var is not set, so a single `dbt build` still works.
+
+The grant tests grant to and revoke from a role named `dbt_demo_role`, which must exist in the test account.
+
+Both suites run in CI on dbt v1 and dbt v2. The unit tests run on every pull request; the integration tests need the Snowflake secrets and run for pull requests targeting `master`.
+
 ## Local Development
 
 ### Prerequisites
@@ -632,7 +673,7 @@ SNOWFLAKE_TEST_AUTHENTICATOR=externalbrowser
 
 This script stages a clean copy of the package to avoid a Windows path-length issue caused by dbt's recursive local package installation, then runs `dbt deps` and `dbt build` from `integration_tests/`.
 
-> CI always runs against a freshly created schema, so it only ever exercises the `cortex_search_service` CREATE path. To verify the ALTER-in-place path, run `.\scripts\run_tests.ps1` twice in a row against the same persistent dev schema and confirm the second run issues `ALTER CORTEX SEARCH SERVICE ... SET` instead of another `CREATE OR REPLACE`.
+> `run_tests.ps1` runs the models once. CI runs them twice to reach the ALTER and second-version paths — see [Testing](#testing) for the commands.
 
 To install packages only (no build):
 

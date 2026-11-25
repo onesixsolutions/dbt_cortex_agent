@@ -9,7 +9,7 @@
             'target_lag': '7 days',
             'primary_key': ['id'],
             'auto_suspend': 1800,
-            'comment': 'Full integration test search service — exercises every config option',
+            'comment': 'Full integration test search service — exercises every config option' ~ (' [second run]' if var('second_run', false) else ''),
             'search_service_grants': ['dbt_demo_role']
         }
     )
