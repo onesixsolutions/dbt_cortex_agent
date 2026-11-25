@@ -9,7 +9,20 @@ on:
 
 jobs:
   integration-tests:
+    name: integration-tests (${{ matrix.dbt.name }})
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      # Both engines deploy the same objects into the same Snowflake test schema,
+      # so the jobs must not run at the same time.
+      max-parallel: 1
+      matrix:
+        dbt:
+          - name: dbt v1
+            package: dbt-snowflake
+          - name: dbt v2
+            package: dbt
 
     steps:
       - name: Checkout repository
@@ -20,8 +33,11 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install dbt-snowflake
-        run: pip install dbt-snowflake
+      - name: Install ${{ matrix.dbt.name }}
+        run: pip install ${{ matrix.dbt.package }}
+
+      - name: Print dbt version
+        run: dbt --version
 
       - name: Write private key file
         run: |

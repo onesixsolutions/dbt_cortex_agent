@@ -4,8 +4,7 @@ A custom dbt materialization for deploying [Snowflake Cortex Agents](https://doc
 
 ## Requirements
 
-- dbt >= 1.0.0
-- Snowflake adapter (`dbt-snowflake`)
+- dbt v1 (dbt Core >= 1.0.0 with the `dbt-snowflake` adapter) or dbt v2 — see [dbt v2](#dbt-v2) for how config options are set there
 - Snowflake account with Cortex Agents enabled
 - Snowflake account with Cortex Search enabled (for `cortex_search_service` models)
 
@@ -41,8 +40,10 @@ Create a model file whose **body is the raw Snowflake agent YAML specification**
 -- models/agents/revenue_assistant.sql
 {{ config(
     materialized='cortex_agent',
-    comment='Revenue analysis assistant powered by Cortex Analyst',
-    profile='{"display_name": "Revenue Assistant", "color": "blue"}'
+    meta={
+        'comment': 'Revenue analysis assistant powered by Cortex Analyst',
+        'profile': '{"display_name": "Revenue Assistant", "color": "blue"}'
+    }
 ) }}
 
 models:
@@ -82,6 +83,8 @@ SHOW AGENTS IN SCHEMA my_db.my_schema;
 
 ## Config Options
 
+Every option below except `materialized` is a package option: set it under `meta` (recommended — works on every dbt version) or, on dbt v1 only, as a top-level config key. See [dbt v2](#dbt-v2).
+
 | Option | Type | Required | Description |
 |---|---|---|---|
 | `materialized` | string | Yes | Must be `'cortex_agent'` |
@@ -96,6 +99,37 @@ SHOW AGENTS IN SCHEMA my_db.my_schema;
 | `auto_commit` | bool | No | When `enable_versioning=true`, automatically snapshot the LIVE version into a new named version after each run. Defaults to `true`. Set to `false` to accumulate spec changes in LIVE without committing, then commit manually via `ALTER AGENT COMMIT`. |
 | `version_comment` | string | No | Comment attached to each committed version snapshot. Only used when `enable_versioning=true` and `auto_commit=true`. |
 | `set_default_version` | bool | No | Promote the newly committed version to DEFAULT so end users (and Snowsight's "In use") get it. Defaults to `true`. Only used when `enable_versioning=true` and `auto_commit=true`. `COMMIT` alone does not move the DEFAULT pointer — see [Version promotion](#version-promotion). |
+
+## dbt v2
+
+The dbt v2 engine validates config keys strictly: a key it does not recognise at the top level of `config()`, `schema.yml` or `dbt_project.yml` fails parsing with `Ignored unexpected key` (dbt1060). Package options such as `comment`, `agent_grants` or `search_column` are not native dbt configs, so on dbt v2 they must go under `meta`, which is dbt's supported home for custom keys:
+
+```sql
+{{ config(
+    materialized='cortex_agent',
+    meta={'comment': 'Revenue assistant', 'agent_grants': ['analyst_role']}
+) }}
+```
+
+```yaml
+# schema.yml / properties file
+models:
+  - name: revenue_assistant
+    config:
+      meta:
+        comment: Revenue assistant
+        agent_grants: ['analyst_role']
+```
+
+Every materialization in this package reads each option from `meta` first and falls back to the top-level key, so:
+
+- **`meta` works on dbt v1 and dbt v2.** All examples in this README use it.
+- **Top-level keys (`config(comment='...')`) still work on dbt v1**, so existing projects keep running unchanged. Move them under `meta` before upgrading to dbt v2.
+- If an option is set in both places, the `meta` value wins.
+
+dbt merges `meta` across `dbt_project.yml`, properties files and `config()` blocks, so project-level defaults still combine with per-model settings.
+
+On dbt v2 the YAML-bodied models (`cortex_agent`, `mcp_server`, `cortex_agent_evaluation`) produce `SyntaxInvalid` static-analysis *warnings*, because their bodies are specifications rather than SQL. These are harmless; set `static_analysis: off` on those models to silence them.
 
 ## How It Works
 
@@ -125,7 +159,7 @@ Step 5 matters: **`COMMIT` alone does not move the DEFAULT pointer.** Snowflake 
 Promoting explicitly on every commit makes deploys deterministic and self-healing — a pinned agent is un-stuck by the next `dbt run`. Opt out with `set_default_version=false` if you promote versions yourself (e.g. staged releases via aliases):
 
 ```sql
-{{ config(materialized='cortex_agent', set_default_version=false) }}
+{{ config(materialized='cortex_agent', meta={'set_default_version': false}) }}
 ```
 
 Check which version is live:
@@ -143,19 +177,20 @@ SHOW VERSIONS IN AGENT my_db.my_schema.my_agent;  -- is_default = true marks the
 models:
   my_project:
     agents:
-      +enable_versioning: false
+      +meta:
+        enable_versioning: false
 ```
 
 Or per-model:
 
 ```sql
-{{ config(materialized='cortex_agent', enable_versioning=false) }}
+{{ config(materialized='cortex_agent', meta={'enable_versioning': false}) }}
 ```
 
 **Commit manually** by setting `auto_commit=false` — the materialization keeps the LIVE version open across runs and you commit explicitly when ready:
 
 ```sql
-{{ config(materialized='cortex_agent', auto_commit=false) }}
+{{ config(materialized='cortex_agent', meta={'auto_commit': false}) }}
 ```
 
 ## Idempotency
@@ -184,7 +219,7 @@ By default both land in the agent's own schema. Use `feedback_schema` to place t
 ```sql
 {{ config(
     materialized='cortex_agent',
-    feedback_schema='SHARED_SCHEMA'
+    meta={'feedback_schema': 'SHARED_SCHEMA'}
 ) }}
 ```
 
@@ -193,7 +228,7 @@ Or with an explicit database:
 ```sql
 {{ config(
     materialized='cortex_agent',
-    feedback_schema='MY_DB.SHARED_SCHEMA'
+    meta={'feedback_schema': 'MY_DB.SHARED_SCHEMA'}
 ) }}
 ```
 
@@ -202,8 +237,10 @@ To override the table name independently of the schema, use `feedback_table`:
 ```sql
 {{ config(
     materialized='cortex_agent',
-    feedback_schema='SHARED_SCHEMA',
-    feedback_table='MY_DB.SHARED_SCHEMA.AGENT_FEEDBACK'
+    meta={
+        'feedback_schema': 'SHARED_SCHEMA',
+        'feedback_table': 'MY_DB.SHARED_SCHEMA.AGENT_FEEDBACK'
+    }
 ) }}
 ```
 
@@ -212,7 +249,7 @@ To enable feedback provisioning, set `create_feedback_table: true`:
 ```sql
 {{ config(
     materialized='cortex_agent',
-    create_feedback_table=true
+    meta={'create_feedback_table': true}
 ) }}
 ```
 
@@ -221,7 +258,7 @@ Add the tool entry to your spec body so the agent can call it. Update the `ident
 ```sql
 {{ config(
     materialized='cortex_agent',
-    feedback_schema='SHARED_SCHEMA'
+    meta={'feedback_schema': 'SHARED_SCHEMA'}
 ) }}
 
 tools:
@@ -262,8 +299,7 @@ By default the procedure runs with `EXECUTE AS CALLER`, so `current_user()` insi
 ```sql
 {{ config(
     materialized='cortex_agent',
-    create_feedback_table=true,
-    feedback_execute_as='owner'
+    meta={'create_feedback_table': true, 'feedback_execute_as': 'owner'}
 ) }}
 ```
 
@@ -326,7 +362,7 @@ Refer to the [Snowflake CREATE MCP SERVER docs](https://docs.snowflake.com/en/sq
 
 The package also ships a `cortex_search_service` materialization for deploying [Snowflake Cortex Search Services](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/cortex-search-overview) — the backing search index used by a `cortex_search` tool on a Cortex Agent, or a `CORTEX_SEARCH_SERVICE_QUERY` tool on an MCP server.
 
-Unlike `cortex_agent` and `mcp_server`, this materialization is **not** a YAML passthrough. The model body is a normal dbt `SELECT` query, which becomes the `AS <query>` clause of `CREATE CORTEX SEARCH SERVICE`. All other DDL clauses (search column, attributes, warehouse, target lag, etc.) come from `config()`.
+Unlike `cortex_agent` and `mcp_server`, this materialization is **not** a YAML passthrough. The model body is a normal dbt `SELECT` query, which becomes the `AS <query>` clause of `CREATE CORTEX SEARCH SERVICE`. All other DDL clauses (search column, attributes, warehouse, target lag, etc.) come from the model's config.
 
 Only the single-index syntax (`ON <search_column>` + `ATTRIBUTES`) is supported. If you need to search over multiple text fields, blend them into one column in the model's `SELECT` (e.g. `short_description || ' ' || long_description || ' ' || synonyms as search_text`) and keep the individual columns as `ATTRIBUTES` for filtering/display.
 
@@ -336,11 +372,13 @@ Only the single-index syntax (`ON <search_column>` + `ATTRIBUTES`) is supported.
 -- models/search/product_search.sql
 {{ config(
     materialized='cortex_search_service',
-    search_column='search_text',
-    attributes=['id', 'title', 'category'],
-    target_lag='1 hour',
-    primary_key=['id'],
-    comment='Product search index for the shopping assistant agent'
+    meta={
+        'search_column': 'search_text',
+        'attributes': ['id', 'title', 'category'],
+        'target_lag': '1 hour',
+        'primary_key': ['id'],
+        'comment': 'Product search index for the shopping assistant agent'
+    }
 ) }}
 
 select
@@ -365,6 +403,8 @@ DESCRIBE CORTEX SEARCH SERVICE my_db.my_schema.product_search;
 ```
 
 ### Config Options
+
+As with agents, set every option except `materialized` under `meta` (see [dbt v2](#dbt-v2)).
 
 | Option | Type | Required | Description |
 |---|---|---|---|
@@ -397,7 +437,7 @@ This split matters because `CREATE OR REPLACE` forces Snowflake to fully rebuild
 ### Prerequisites
 
 - PowerShell
-- dbt-snowflake installed in your environment
+- dbt installed in your environment (`pip install dbt-snowflake` for dbt v1, or `pip install dbt` for dbt v2)
 - A Snowflake account with Cortex Agents enabled
 
 ### Setup
