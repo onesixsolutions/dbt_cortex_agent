@@ -2,9 +2,11 @@
     config(
         materialized='cortex_agent',
         alias='cortex_agent_versioned_test',
-        comment='Versioned integration test agent — exercises enable_versioning, auto_commit, and version_comment',
         tags=['integration'],
-        version_comment='CI test commit'
+        meta={
+            'comment': 'Versioned integration test agent — exercises enable_versioning, auto_commit, and version_comment',
+            'version_comment': 'CI test commit'
+        }
     )
 }}
 

@@ -32,19 +32,19 @@
 
 {% materialization cortex_search_service, adapter='snowflake' %}
 
-  {%- set search_column                  = config.get('search_column', default=none) -%}
-  {%- set attributes                     = config.get('attributes', default=none) -%}
-  {%- set warehouse                      = config.get('warehouse', default=target.warehouse) -%}
-  {%- set target_lag                     = config.get('target_lag', default=none) -%}
-  {%- set primary_key                    = config.get('primary_key', default=none) -%}
-  {%- set embedding_model                = config.get('embedding_model', default=none) -%}
-  {%- set refresh_mode                   = config.get('refresh_mode', default=none) -%}
-  {%- set initialize                     = config.get('initialize', default=none) -%}
-  {%- set full_index_build_interval_days = config.get('full_index_build_interval_days', default=none) -%}
-  {%- set request_logging                = config.get('request_logging', default=none) -%}
-  {%- set auto_suspend                   = config.get('auto_suspend', default=none) -%}
-  {%- set comment                        = config.get('comment', default=none) -%}
-  {%- set search_service_grants          = config.get('search_service_grants', default=[]) -%}
+  {%- set search_column                  = dbt_cortex_agent.get_package_config('search_column', default=none) -%}
+  {%- set attributes                     = dbt_cortex_agent.get_package_config('attributes', default=none) -%}
+  {%- set warehouse                      = dbt_cortex_agent.get_package_config('warehouse', default=target.warehouse) -%}
+  {%- set target_lag                     = dbt_cortex_agent.get_package_config('target_lag', default=none) -%}
+  {%- set primary_key                    = dbt_cortex_agent.get_package_config('primary_key', default=none) -%}
+  {%- set embedding_model                = dbt_cortex_agent.get_package_config('embedding_model', default=none) -%}
+  {%- set refresh_mode                   = dbt_cortex_agent.get_package_config('refresh_mode', default=none) -%}
+  {%- set initialize                     = dbt_cortex_agent.get_package_config('initialize', default=none) -%}
+  {%- set full_index_build_interval_days = dbt_cortex_agent.get_package_config('full_index_build_interval_days', default=none) -%}
+  {%- set request_logging                = dbt_cortex_agent.get_package_config('request_logging', default=none) -%}
+  {%- set auto_suspend                   = dbt_cortex_agent.get_package_config('auto_suspend', default=none) -%}
+  {%- set comment                        = dbt_cortex_agent.get_package_config('comment', default=none) -%}
+  {%- set search_service_grants          = dbt_cortex_agent.get_package_config('search_service_grants', default=[]) -%}
 
   {%- if search_column is none %}
     {{ exceptions.raise_compiler_error("cortex_search_service models require a `search_column` config option (the column CORTEX SEARCH SERVICE will index and search over).") }}
@@ -75,9 +75,15 @@
 
   {%- if _service_exists and not should_full_refresh() %}
 
-  {% call statement('main') %}
-    {{ dbt_cortex_agent.snowflake__alter_cortex_search_service(target_relation, attributes, warehouse, target_lag, primary_key, full_index_build_interval_days, request_logging, auto_suspend, comment) }}
+  {# One statement per property. dbt's materialization framework requires a statement named
+     'main', so the last ALTER takes that name. The list is never empty: target_lag,
+     warehouse and attributes are always set. #}
+  {%- set _alter_statements = dbt_cortex_agent.snowflake__alter_cortex_search_service(target_relation, attributes, warehouse, target_lag, primary_key, full_index_build_interval_days, request_logging, auto_suspend, comment) -%}
+  {%- for _alter_sql in _alter_statements %}
+  {% call statement('main' if loop.last else 'alter_' ~ loop.index) %}
+    {{ _alter_sql }}
   {% endcall %}
+  {%- endfor %}
 
   {%- else %}
 
@@ -89,11 +95,11 @@
 
   {{ run_hooks(post_hooks) }}
 
-  {%- if search_service_grants | length > 0 %}
-  {% call statement('grants') %}
-    {{ dbt_cortex_agent.snowflake__grant_cortex_search_service_usage(target_relation, search_service_grants) }}
+  {%- for _grant_sql in dbt_cortex_agent.snowflake__grant_cortex_search_service_usage(target_relation, search_service_grants) %}
+  {% call statement('grant_' ~ loop.index) %}
+    {{ _grant_sql }}
   {% endcall %}
-  {%- endif %}
+  {%- endfor %}
 
   {{ return({'relations': [target_relation]}) }}
 

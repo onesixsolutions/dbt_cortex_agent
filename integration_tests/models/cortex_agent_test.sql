@@ -2,13 +2,15 @@
     config(
         materialized='cortex_agent',
         alias='cortex_agent_test',
-        comment='Full integration test agent — exercises every config and spec option',
-        profile='{"display_name": "Full Test Agent", "avatar": "robot", "color": "blue"}',
         tags=['integration'],
-        agent_grants=['dbt_demo_role'],
-        create_feedback_table=true,
-        feedback_execute_as='owner',
-        enable_versioning=false
+        meta={
+            'comment': 'Full integration test agent — exercises every config and spec option',
+            'profile': '{"display_name": "Full Test Agent", "avatar": "robot", "color": "blue"}',
+            'agent_grants': ['dbt_demo_role'],
+            'create_feedback_table': true,
+            'feedback_execute_as': 'owner',
+            'enable_versioning': false
+        }
     )
 }}
 

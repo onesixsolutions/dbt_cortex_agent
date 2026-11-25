@@ -1,8 +1,8 @@
 {{
     config(
         materialized='cortex_agent_evaluation',
-        run_on_build=false,
-        tags=['integration', 'eval']
+        tags=['integration', 'eval'],
+        meta={'run_on_build': false}
     )
 }}
 {#

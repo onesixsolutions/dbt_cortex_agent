@@ -45,17 +45,17 @@
 
 {% materialization cortex_agent, adapter='snowflake' %}
 
-  {%- set comment                = config.get('comment', default=none) -%}
-  {%- set profile                = config.get('profile', default=none) -%}
-  {%- set agent_grants           = config.get('agent_grants', default=[]) -%}
-  {%- set create_feedback_table  = config.get('create_feedback_table', default=false) -%}
-  {%- set feedback_schema_config = config.get('feedback_schema', default=none) -%}
-  {%- set feedback_table         = config.get('feedback_table', default=none) -%}
-  {%- set feedback_execute_as    = config.get('feedback_execute_as', default='caller') -%}
-  {%- set enable_versioning      = config.get('enable_versioning', default=true) -%}
-  {%- set auto_commit            = config.get('auto_commit', default=true) -%}
-  {%- set version_comment        = config.get('version_comment', default=none) -%}
-  {%- set set_default_version    = config.get('set_default_version', default=true) -%}
+  {%- set comment                = dbt_cortex_agent.get_package_config('comment', default=none) -%}
+  {%- set profile                = dbt_cortex_agent.get_package_config('profile', default=none) -%}
+  {%- set agent_grants           = dbt_cortex_agent.get_package_config('agent_grants', default=[]) -%}
+  {%- set create_feedback_table  = dbt_cortex_agent.get_package_config('create_feedback_table', default=false) -%}
+  {%- set feedback_schema_config = dbt_cortex_agent.get_package_config('feedback_schema', default=none) -%}
+  {%- set feedback_table         = dbt_cortex_agent.get_package_config('feedback_table', default=none) -%}
+  {%- set feedback_execute_as    = dbt_cortex_agent.get_package_config('feedback_execute_as', default='caller') -%}
+  {%- set enable_versioning      = dbt_cortex_agent.get_package_config('enable_versioning', default=true) -%}
+  {%- set auto_commit            = dbt_cortex_agent.get_package_config('auto_commit', default=true) -%}
+  {%- set version_comment        = dbt_cortex_agent.get_package_config('version_comment', default=none) -%}
+  {%- set set_default_version    = dbt_cortex_agent.get_package_config('set_default_version', default=true) -%}
 
   {%- set target_relation = api.Relation.create(
       identifier=this.identifier,
@@ -168,11 +168,11 @@
 
   {{ run_hooks(post_hooks) }}
 
-  {%- if agent_grants | length > 0 %}
-  {% call statement('grants') %}
-    {{ dbt_cortex_agent.snowflake__grant_cortex_agent_usage(target_relation, agent_grants) }}
+  {%- for _grant_sql in dbt_cortex_agent.snowflake__grant_cortex_agent_usage(target_relation, agent_grants) %}
+  {% call statement('grant_' ~ loop.index) %}
+    {{ _grant_sql }}
   {% endcall %}
-  {%- endif %}
+  {%- endfor %}
 
   {{ return({'relations': [target_relation]}) }}
 

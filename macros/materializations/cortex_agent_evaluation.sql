@@ -31,9 +31,9 @@
 
 {% materialization cortex_agent_evaluation, adapter='snowflake' %}
 
-  {%- set stage        = config.get('stage', default=none) -%}
-  {%- set run_on_build = config.get('run_on_build', default=false) -%}
-  {%- set run_name     = config.get('run_name', default=none) -%}
+  {%- set stage        = dbt_cortex_agent.get_package_config('stage', default=none) -%}
+  {%- set run_on_build = dbt_cortex_agent.get_package_config('run_on_build', default=false) -%}
+  {%- set run_name     = dbt_cortex_agent.get_package_config('run_name', default=none) -%}
 
   -- dbt has no native 'evaluation' relation type. 'view' is a graph-tracking placeholder
   -- only — the materialization never creates a view; it writes a config file to a stage.

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- dbt v2 support. The dbt v2 engine rejects config keys it does not know (`Ignored unexpected key`, dbt1060), which made every model using a package option fail to parse. All package options can now be set under `meta` — e.g. `config(materialized='cortex_agent', meta={'comment': '...', 'agent_grants': [...]})` — which works on dbt v1 and v2. Top-level keys keep working on dbt v1, so existing projects are unaffected until they upgrade. When an option is set in both places the `meta` value wins.
+- `get_package_config` macro — reads a package option from `meta`, falling back to the top-level config key
+- CI now runs the integration tests on both dbt v1 (`dbt-snowflake`) and dbt v2 (`dbt`)
+
+### Changed
+- `snowflake__grant_cortex_agent_usage`, `snowflake__grant_cortex_search_service_usage` and `snowflake__alter_cortex_search_service` now return a **list of SQL statements** instead of one `;`-separated string, and the materializations execute each statement on its own. Sending several statements in one call relied on dbt-snowflake's client-side statement splitting, which is not guaranteed on the dbt v2 engine. Only affects projects that call these macros directly.
+- README examples and the integration tests set package options under `meta`
+
+### Fixed
+- `UnexpectedJinjaBlockDeprecation` warning on dbt Core 1.10+ caused by a `do` tag inside a SQL comment in `drop_mcp_server.sql`
+
 ## [1.0.0] - 2026-08-12
 
 Declares the package's API stable, per Semantic Versioning's guidance for production-ready releases. No functional changes from `0.5.0`.
