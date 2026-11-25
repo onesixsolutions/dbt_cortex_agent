@@ -47,7 +47,7 @@
   auto_suspend = {{ auto_suspend }}
   {%- endif %}
   {%- if comment is not none %}
-  comment = '{{ comment }}'
+  comment = '{{ dbt_cortex_agent.escape_string_literal(comment) }}'
   {%- endif %}
   as (
 {{ query }}

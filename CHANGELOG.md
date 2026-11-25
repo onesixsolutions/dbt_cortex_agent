@@ -34,15 +34,20 @@ Adds dbt v2 support, fixes several ways grants were lost or never issued, and ad
 - `normalize_grants`, `grantee_clause`, `get_grant_statements`, `get_revoke_unlisted_grant_statements` and `get_revoke_statements_for_rows` macros
 
 ### Changed
+- Package options are read with `config.meta_get()`, dbt's recommended accessor for custom keys, where it exists (dbt Core 1.10+ and dbt v2), falling back to the `meta` dictionary on older versions
+- A model that sets dbt's native `grants` config now gets a warning: these materializations do not apply it, and it previously did nothing silently
+- The integration test agent names its Cortex Search Service with the documented `search_service` key instead of `name`
 - `CREATE OR REPLACE AGENT` (used when `enable_versioning: false` and on `--full-refresh`) now includes `COPY GRANTS`, so privileges granted on the agent outside of `agent_grants` are no longer dropped on each replace. Set `copy_grants: false` for the previous behaviour.
 - `AGENT_SUBMIT_FEEDBACK` is now replaced with `COPY GRANTS`, so grants on the shared procedure survive each run
 - `snowflake__grant_cortex_agent_usage`, `snowflake__grant_cortex_search_service_usage` and `snowflake__alter_cortex_search_service` now return a **list of SQL statements** instead of one `;`-separated string, and the materializations execute each statement on its own. Sending several statements in one call relied on dbt-snowflake's client-side statement splitting, which is not guaranteed on the dbt v2 engine. Only affects projects that call these macros directly.
 - README examples and the integration tests set package options under `meta`
 
 ### Documentation
+- New "Design Notes and Limitations" section listing where these materializations differ from dbt's built-in ones
 - README reviewed against the current Snowflake documentation: new [Required Privileges](README.md#required-privileges) section covering what the deploying role and consuming roles need beyond the object grant; a section for the previously undocumented `cortex_agent_evaluation` materialization, including the `dataset`-block re-run caveat, `agent_version`, metric version pinning and the privileges needed to start a run; current MCP server tool types (`CODING_AGENT`, `tool_config`, `annotations`); current agent tool types and the `tool_not_accessible` setting; and a note on Snowflake's native feedback endpoint
 
 ### Fixed
+- An apostrophe in `comment`, `profile` or `version_comment` ended the SQL string literal early and failed the statement. Apostrophes are now escaped (`escape_string_literal` macro). Values that already contain a hand-escaped apostrophe (`''` or `\'`) are left as they are.
 - Existence checks for agents and search services could match the wrong object. `SHOW ... LIKE '<name>'` treats `_` as a single-character wildcard, so e.g. `SALES_AGENT` also matched `SALESXAGENT`, sending the materialization down the ALTER path for an object that did not exist. The returned name is now compared exactly (`find_show_row` macro).
 - `cortex_search_service` now warns when `search_column` or `embedding_model` in the model config no longer matches the deployed service. These are fixed at creation and were silently ignored on the ALTER path.
 - Agent LIVE-version detection also recognises a `SHOW VERSIONS` row named `LIVE`, not only a row with an empty name

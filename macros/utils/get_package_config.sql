@@ -15,12 +15,24 @@
 -- `meta` makes dbt (v1.10+ and v2) log a "use config.meta_get()" warning on every run.
 -- A `meta` value therefore wins over a top-level value when both are set. `default` is
 -- returned when the option is absent (or explicitly null) in both places.
+--
+-- Reading `meta`: dbt's recommended accessor for custom keys is config.meta_get(), available
+-- from dbt Core 1.10 and on dbt v2. It is used when present; older dbt Core versions fall back
+-- to reading the `meta` dictionary directly.
 {% macro get_package_config(key, default=none) %}
-  {%- set _value = none -%}
-  {%- set _meta = config.get('meta', default=none) -%}
-  {%- if _meta is mapping and key in _meta -%}
-    {%- set _value = _meta[key] -%}
+  {#- A sentinel default tells "absent from meta" apart from "present but null": a key that is
+      present must not be looked up again with config.get(), which would log a warning. -#}
+  {%- set _unset = '__dbt_cortex_agent_unset__' -%}
+  {%- set _value = _unset -%}
+  {%- if config.meta_get is defined -%}
+    {%- set _value = config.meta_get(key, default=_unset) -%}
   {%- else -%}
+    {%- set _meta = config.get('meta', default=none) -%}
+    {%- if _meta is mapping and key in _meta -%}
+      {%- set _value = _meta[key] -%}
+    {%- endif -%}
+  {%- endif -%}
+  {%- if _value == _unset -%}
     {%- set _value = config.get(key, default=none) -%}
   {%- endif -%}
   {{ return(default if _value is none else _value) }}

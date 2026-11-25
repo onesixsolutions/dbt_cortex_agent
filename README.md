@@ -252,6 +252,18 @@ With versioning enabled (default), every `dbt run` preserves history — re-runs
 
 Replacing an agent would normally drop every privilege granted on it. The materialization adds `COPY GRANTS` to `CREATE OR REPLACE AGENT`, so existing grants (other than `OWNERSHIP`) carry over. Set `copy_grants: false` to get a clean slate on each replace, leaving only the roles in `agent_grants`.
 
+## Design Notes and Limitations
+
+These materializations deploy object types dbt has no built-in concept of, so a few things differ from a table or view model:
+
+- **Relation type.** dbt needs every model to be a table or view in its relation cache, so each object is registered as a `view` placeholder. No view is ever created. One consequence: if you later change a model *away* from one of these materializations, dbt will try to drop a view of that name, which does nothing to the agent, server or service — drop it yourself first.
+- **dbt's native `grants` config is not applied.** dbt's built-in grant handling only knows tables and views. Use `agent_grants`, `search_service_grants` or `mcp_server_grants` instead (see [Grants](#grants)); a model that sets the native `grants` config gets a warning.
+- **`persist_docs` is not applied.** Use the `comment` option to describe an agent or search service in Snowflake.
+- **Object names are used unquoted**, as `database.schema.identifier`. Names that need quoting (mixed case, special characters) are not supported.
+- **String options are placed in single-quoted SQL literals.** Apostrophes in `comment`, `profile` and `version_comment` are escaped for you. The YAML body is placed in a `$$ ... $$` block, so it must not itself contain `$$`.
+- **Snowflake does not validate a specification's tools when the object is created.** A misspelled key or a reference to a missing object deploys successfully and only shows up when the tool is used — test the agent after deploying it.
+- **Models sharing a feedback schema share one `AGENT_SUBMIT_FEEDBACK` procedure**, which each of them replaces on every run.
+
 ## Supported Tools in Specification
 
 Built-in tool types (add to the `tools:` section of your spec body):
@@ -261,6 +273,15 @@ Built-in tool types (add to the `tools:` section of your spec body):
 - `generic` — any Snowflake stored procedure or UDF (see [Feedback Tool](#feedback-tool) for an example)
 - `web_search` — web search (must be enabled for the account by an `ACCOUNTADMIN`)
 - `data_to_chart` — chart generation (available by default)
+
+In `tool_resources`, the entry for a `cortex_search` tool names its service with the `search_service` key:
+
+```yaml
+tool_resources:
+  product_search:
+    search_service: '{{ ref("product_search_service") }}'
+    max_results: 10
+```
 
 MCP connectors are configured through the top-level `mcp_servers` key of the spec. Because the body is a passthrough, anything else Snowflake adds to the specification works without a package change.
 

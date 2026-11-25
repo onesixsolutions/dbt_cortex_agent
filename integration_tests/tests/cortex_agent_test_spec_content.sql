@@ -27,6 +27,9 @@ assertions as (
   select 'analyst tool description missing'  as error from ddl where not contains(content, 'structured data questions')
   union all
   select 'search tool description missing'   as error from ddl where not contains(content, 'unstructured content')
+  union all
+  -- Snowflake documents `search_service` as the tool_resources key naming the service.
+  select 'search_service resource key missing' as error from ddl where not contains(content, 'search_service')
 )
 
 select * from assertions

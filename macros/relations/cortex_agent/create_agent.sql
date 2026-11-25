@@ -22,10 +22,10 @@
   create or replace agent
     {{ relation.database }}.{{ relation.schema }}.{{ relation.identifier }}
   {%- if comment is not none %}
-  comment = '{{ comment }}'
+  comment = '{{ dbt_cortex_agent.escape_string_literal(comment) }}'
   {%- endif %}
   {%- if profile is not none %}
-  profile = '{{ profile }}'
+  profile = '{{ dbt_cortex_agent.escape_string_literal(profile) }}'
   {%- endif %}
   {%- if copy_grants %}
   copy grants

@@ -102,6 +102,8 @@
     {%- set feedback_table = feedback_db ~ '.' ~ feedback_schema ~ '.AGENT_FEEDBACK' -%}
   {%- endif -%}
 
+  {%- do dbt_cortex_agent.warn_if_native_grants('agent_grants') -%}
+
   {{ run_hooks(pre_hooks) }}
 
   {%- if create_feedback_table and feedback_table is not none %}

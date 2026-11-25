@@ -80,6 +80,8 @@
       type='view'
   ) -%}
 
+  {%- do dbt_cortex_agent.warn_if_native_grants('search_service_grants') -%}
+
   {{ run_hooks(pre_hooks) }}
 
   {%- set _show_services_sql -%}

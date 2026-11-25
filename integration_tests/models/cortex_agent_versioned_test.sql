@@ -4,8 +4,8 @@
         alias='cortex_agent_versioned_test',
         tags=['integration'],
         meta={
-            'comment': 'Versioned integration test agent — exercises enable_versioning, auto_commit, and version_comment',
-            'version_comment': 'CI test commit'
+            'comment': "Versioned integration test agent — exercises enable_versioning, auto_commit, and version_comment. It's also the apostrophe test.",
+            'version_comment': "CI's test commit"
         }
     )
 }}
