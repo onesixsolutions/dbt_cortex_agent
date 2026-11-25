@@ -57,6 +57,8 @@
     {%- set run_name = target_relation.identifier ~ '_' ~ run_started_at.strftime('%Y%m%d_%H%M%S') -%}
   {%- endif -%}
 
+  {%- do dbt_cortex_agent.assert_no_dollar_quote(sql, 'cortex_agent_evaluation') -%}
+
   {{ run_hooks(pre_hooks) }}
 
   {% call statement('create_stage') %}

@@ -73,6 +73,12 @@ jobs:
         working-directory: integration_tests
         run: "dbt run --vars '{second_run: true}'"
 
+      # A full refresh must not replace a versioned agent: that would delete its version
+      # history. With an unchanged specification it must not add a version either.
+      - name: Run versioned agents with --full-refresh (must preserve history)
+        working-directory: integration_tests
+        run: "dbt run --full-refresh --select cortex_agent_versioned_test cortex_agent_versioned_test_versions cortex_agent_unchanged_test cortex_agent_unchanged_test_versions --vars '{second_run: true}'"
+
       - name: Print compiled and run SQL on failure
         if: failure()
         run: |

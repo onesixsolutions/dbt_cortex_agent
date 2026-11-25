@@ -42,6 +42,15 @@ models:
       alias: mcp_server_test
       tags: ['integration']
 
+  - name: cortex_agent_unchanged_test
+    description: "Versioned agent with a constant specification, to prove a run that changes nothing does not commit a new version."
+
+  - name: cortex_agent_unchanged_test_versions
+    description: "Captures SHOW VERSIONS IN AGENT for cortex_agent_unchanged_test."
+
+  - name: cortex_agent_versioned_test_properties
+    description: "Captures the COMMENT and PROFILE of cortex_agent_versioned_test from SHOW AGENTS, to prove they are re-applied to an existing agent."
+
   - name: cortex_agent_revoke_test
     description: "Agent with revoke_unlisted_grants=true and a post-hook that plants an unlisted MONITOR grant, to prove the materialization revokes it while keeping the listed USAGE grant."
 

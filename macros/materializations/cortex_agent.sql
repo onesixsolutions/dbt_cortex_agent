@@ -1,8 +1,10 @@
 -- Custom dbt materialization for Snowflake Cortex Agents.
 -- The model body must be a valid Snowflake agent YAML specification.
 -- With versioning (the default) the agent is created once with CREATE AGENT IF NOT EXISTS and
--- each later run updates and commits a new version; with enable_versioning=false, or on
--- --full-refresh, it is replaced with CREATE OR REPLACE AGENT ... FROM SPECIFICATION $$ ... $$.
+-- each later run that changes the specification updates and commits a new version. With
+-- enable_versioning=false it is replaced with CREATE OR REPLACE AGENT ... FROM SPECIFICATION
+-- $$ ... $$ on every run; a versioned agent is replaced only on --full-refresh with
+-- replace_on_full_refresh=true.
 --
 -- Config options:
 --   comment (string, optional)        : agent-level comment visible in Snowflake
@@ -42,12 +44,25 @@
 --                                        MODIFY LIVE VERSION instead of CREATE OR REPLACE AGENT,
 --                                        preserving version history across runs.
 --                                        Set to false in dev environments to skip versioning overhead.
---                                        dbt run --full-refresh falls back to CREATE OR REPLACE,
---                                        resetting all version history.
+--                                        dbt run --full-refresh does NOT replace a versioned agent
+--                                        unless replace_on_full_refresh=true (see below).
+--   replace_on_full_refresh (bool, optional) : allow `dbt run --full-refresh` to replace a
+--                                        versioned agent with CREATE OR REPLACE AGENT. Defaults
+--                                        to false, because a replace permanently deletes the
+--                                        agent's version history (and what is attached to the
+--                                        old object), and --full-refresh is routinely run across
+--                                        a whole project for other reasons. When false, a full
+--                                        refresh deploys a versioned agent like any other run.
 --   auto_commit (bool, optional)      : when enable_versioning=true, automatically snapshot the
---                                       LIVE version into a new named version after each run.
---                                       Defaults to true. Set to false to accumulate changes in
---                                       LIVE without committing, then commit manually.
+--                                       LIVE version into a new named version after a run that
+--                                       changed the specification. Defaults to true. Set to
+--                                       false to accumulate changes in LIVE without committing,
+--                                       then commit manually.
+--   commit_only_on_change (bool, optional) : when enable_versioning=true, compare the compiled
+--                                       specification with the deployed one and skip the update
+--                                       and commit when they are the same, so a run that changes
+--                                       nothing does not add a version. Defaults to true. Set to
+--                                       false to commit a new version on every run.
 --   version_comment (string, optional) : comment attached to the committed version snapshot.
 --                                        Only used when enable_versioning=true and auto_commit=true.
 --   set_default_version (bool, optional) : promote the newly committed version to DEFAULT so
@@ -76,6 +91,8 @@
   {%- set auto_commit            = dbt_cortex_agent.get_package_config('auto_commit', default=true) -%}
   {%- set version_comment        = dbt_cortex_agent.get_package_config('version_comment', default=none) -%}
   {%- set set_default_version    = dbt_cortex_agent.get_package_config('set_default_version', default=true) -%}
+  {%- set commit_only_on_change  = dbt_cortex_agent.get_package_config('commit_only_on_change', default=true) -%}
+  {%- set replace_on_full_refresh = dbt_cortex_agent.get_package_config('replace_on_full_refresh', default=false) -%}
 
   {%- set target_relation = api.Relation.create(
       identifier=this.identifier,
@@ -103,6 +120,18 @@
   {%- endif -%}
 
   {%- do dbt_cortex_agent.warn_if_native_grants('agent_grants') -%}
+  {%- do dbt_cortex_agent.assert_no_dollar_quote(sql, 'cortex_agent') -%}
+
+  {#- A versioned agent is only ever replaced on an explicit opt-in. CREATE OR REPLACE AGENT
+      resets the agent to VERSION$1, permanently deleting its version history, and
+      --full-refresh is something people run across a whole project to rebuild incremental
+      models. Without replace_on_full_refresh a full refresh therefore deploys the agent the
+      normal, history-preserving way. -#}
+  {%- set _full_refresh = should_full_refresh() -%}
+  {%- set _replace_agent = (not enable_versioning) or (_full_refresh and replace_on_full_refresh) -%}
+  {%- if _full_refresh and enable_versioning and not replace_on_full_refresh -%}
+    {{ log("dbt_cortex_agent: --full-refresh does not replace versioned agent " ~ this.identifier ~ " (that would delete its version history); deploying it as a normal run. Set replace_on_full_refresh: true to replace it.", info=true) }}
+  {%- endif -%}
 
   {{ run_hooks(pre_hooks) }}
 
@@ -116,51 +145,53 @@
   {% endcall %}
   {%- endif %}
 
-  {%- if enable_versioning and not should_full_refresh() %}
+  {%- if not _replace_agent %}
 
-  {# Inspect existing versions to decide whether LIVE needs (re)creating.
-     SHOW VERSIONS returns one row per committed version (name = VERSION$N) plus, when a
-     LIVE working copy exists, one row for it. That row has been observed with an empty name;
-     Snowflake's docs refer to the working copy as LIVE, so a row named LIVE is treated the
-     same way in case the output changes to match.
-       - no committed versions  : first run — LIVE does not exist yet, skip ADD LIVE VERSION.
-       - committed, no LIVE     : the normal steady state after COMMIT consumed LIVE — restore it.
-       - committed, LIVE exists : ADD LIVE VERSION would fail with 099106 ("There is already a
-                                  live version"), which is the state a prior CREATE OR REPLACE
-                                  (e.g. dbt run --full-refresh) leaves behind — skip the add and
-                                  modify the existing LIVE in place. #}
-  {%- set _show_agents_sql -%}
-    SHOW AGENTS LIKE '{{ target_relation.identifier }}' IN SCHEMA {{ target_relation.database }}.{{ target_relation.schema }}
-  {%- endset -%}
-  {%- set _agent_rows = run_query(_show_agents_sql) -%}
-  {%- set _ns = namespace(has_committed=false, has_live=false) -%}
-  {#- Match the name exactly: LIKE treats `_` as a wildcard, so the SHOW can return a
-      different agent whose name merely fits the pattern. -#}
-  {%- if dbt_cortex_agent.find_show_row(_agent_rows.rows, target_relation.identifier) is not none -%}
-    {%- set _show_versions_sql -%}
-      SHOW VERSIONS IN AGENT {{ target_relation.database }}.{{ target_relation.schema }}.{{ target_relation.identifier }}
-    {%- endset -%}
-    {%- set _version_rows = run_query(_show_versions_sql) -%}
-    {%- for _r in _version_rows.rows -%}
-      {%- set _version_name = (_r['name'] or '') | string | trim -%}
-      {%- if _version_name == '' or (_version_name | upper) == 'LIVE' -%}
-        {%- set _ns.has_live = true -%}
-      {%- else -%}
-        {%- set _ns.has_committed = true -%}
-      {%- endif -%}
-    {%- endfor -%}
-  {%- endif -%}
-  {%- set _has_committed_versions = _ns.has_committed -%}
-  {%- set _has_live_version = _ns.has_live -%}
-
+  {# Creates the agent on the first run; a no-op on every later run. #}
   {% call statement('main') %}
     {{ dbt_cortex_agent.snowflake__create_cortex_agent_if_not_exists(target_relation, sql, comment, profile) }}
   {% endcall %}
 
+  {# COMMENT and PROFILE belong to the agent, not to a version, and CREATE ... IF NOT EXISTS
+     ignores them once the agent exists — so apply them explicitly on every run. #}
+  {%- for _property_sql in dbt_cortex_agent.snowflake__alter_cortex_agent_properties(target_relation, comment, profile) %}
+  {% call statement('agent_property_' ~ loop.index) %}
+    {{ _property_sql }}
+  {% endcall %}
+  {%- endfor %}
+
+  {# Read the agent's versions (it exists by now) to learn:
+       - whether a LIVE working copy exists. COMMIT consumes LIVE, so after a committed run
+         there is none and it must be restored before it can be modified; adding one when it
+         already exists fails with 099106 ("There is already a live version").
+       - what specification is deployed, to tell whether this run changes anything. #}
+  {%- set _show_versions_sql -%}
+    SHOW VERSIONS IN AGENT {{ target_relation.database }}.{{ target_relation.schema }}.{{ target_relation.identifier }}
+  {%- endset -%}
+  {%- set _version_rows = run_query(_show_versions_sql) -%}
+  {%- set _has_spec_column = 'agent_spec' in _version_rows.column_names -%}
+  {%- set _versions = dbt_cortex_agent.summarize_agent_versions(_version_rows.rows, _has_spec_column) -%}
+  {%- set _has_committed_versions = _versions['has_committed'] -%}
+  {%- set _has_live_version = _versions['has_live'] -%}
+
+  {# What "deployed" means depends on the mode. With auto_commit the run's outcome is a
+     committed version, so compare with the newest one; without it the outcome is the LIVE
+     working copy, so compare with that. #}
+  {%- if auto_commit -%}
+    {%- set _deployed_spec = _versions['last_spec'] if _has_committed_versions else _versions['live_spec'] -%}
+  {%- else -%}
+    {%- set _deployed_spec = _versions['live_spec'] if _has_live_version else _versions['last_spec'] -%}
+  {%- endif -%}
+  {%- set _spec_unchanged = commit_only_on_change and dbt_cortex_agent.agent_spec_matches(sql, _deployed_spec) -%}
+
+  {%- if _spec_unchanged %}
+
+  {{ log("dbt_cortex_agent: specification of agent " ~ target_relation.identifier ~ " is unchanged; no new version created.", info=true) }}
+
+  {%- else %}
+
   {%- if _has_committed_versions and not _has_live_version %}
-  {# COMMIT consumes LIVE and does not recreate it. Explicitly restore LIVE from the
-     last committed version before modifying, so MODIFY LIVE VERSION has a target.
-     Skipped when a LIVE already exists — adding a second one errors with 099106. #}
+  {# Restore LIVE from the last committed version so MODIFY LIVE VERSION has a target. #}
   {% call statement('add_live') %}
     {{ dbt_cortex_agent.snowflake__add_cortex_agent_live_version(target_relation) }}
   {% endcall %}
@@ -174,15 +205,17 @@
   {% call statement('commit_version') %}
     {{ dbt_cortex_agent.snowflake__commit_cortex_agent_version(target_relation, version_comment) }}
   {% endcall %}
+  {%- endif %}
 
-  {%- if set_default_version %}
-  {# COMMIT does not move the DEFAULT pointer. Promote explicitly so the version just
-     deployed is the one users get, and so an agent whose pointer was pinned
-     out-of-band (e.g. via Snowsight) is un-stuck on the next run. #}
+  {%- endif %}
+
+  {%- if auto_commit and set_default_version and (_has_committed_versions or not _spec_unchanged) %}
+  {# COMMIT does not move the DEFAULT pointer. Promote explicitly so the newest version is
+     the one users get. This runs even when nothing was committed, so that an agent whose
+     pointer was pinned out-of-band (e.g. via Snowsight) is un-stuck by the next run. #}
   {% call statement('set_default_version') %}
     {{ dbt_cortex_agent.snowflake__set_cortex_agent_default_version(target_relation) }}
   {% endcall %}
-  {%- endif %}
   {%- endif %}
 
   {%- else %}

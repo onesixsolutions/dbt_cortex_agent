@@ -85,3 +85,29 @@
   set default_version = 'LAST'
 
 {% endmacro %}
+
+
+-- Builds ALTER AGENT ... SET statements that apply the agent-level `comment` and `profile`
+-- to an agent that already exists. Returns a LIST of SQL strings (empty when neither is set).
+--
+-- Why this is needed: on the versioned path the agent is created with
+-- CREATE AGENT IF NOT EXISTS, which does nothing once the agent exists. COMMENT and PROFILE
+-- are properties of the agent object, not of a version, so without these statements an edit
+-- to either option was silently ignored on every run after the first.
+--
+-- Because they are object-level, a change takes effect immediately for every version of the
+-- agent, including the one end users are on. One statement per property, so a problem with
+-- one cannot mask the other.
+--
+-- An option that is removed from the config is left as it is in Snowflake; it is not unset.
+{% macro snowflake__alter_cortex_agent_properties(relation, comment, profile) %}
+  {%- set _prefix = 'alter agent ' ~ relation.database ~ '.' ~ relation.schema ~ '.' ~ relation.identifier ~ ' set ' -%}
+  {%- set _statements = [] -%}
+  {%- if comment is not none -%}
+    {%- do _statements.append(_prefix ~ "comment = '" ~ dbt_cortex_agent.escape_string_literal(comment) ~ "'") -%}
+  {%- endif -%}
+  {%- if profile is not none -%}
+    {%- do _statements.append(_prefix ~ "profile = '" ~ dbt_cortex_agent.escape_string_literal(profile) ~ "'") -%}
+  {%- endif -%}
+  {{ return(_statements) }}
+{% endmacro %}

@@ -8,6 +8,10 @@
   {{ dbt_cortex_agent.normalize_grants({'ownership': ['r1']}, 'agent_grants') }}
 {%- elif case == 'grant_ownership_mixed_case' -%}
   {{ dbt_cortex_agent.get_grant_statements('agent', 'DB.SCH.OBJ', {'usage': ['r1'], ' OwnerShip ': ['r2']}, 'agent_grants') }}
+{%- elif case == 'dollar_quote_in_agent_body' -%}
+  {%- do dbt_cortex_agent.assert_no_dollar_quote('instructions:\n  response: "Prices look like $$100"', 'cortex_agent') -%}
+{%- elif case == 'dollar_quote_in_mcp_body' -%}
+  {%- do dbt_cortex_agent.assert_no_dollar_quote('tools:\n  - description: "$$"', 'mcp_server') -%}
 {%- elif case == 'assertion_helper_detects_mismatch' -%}
   {{ assert_equal('deliberate mismatch', 'a', 'b') }}
 {%- elif case == 'assertion_helper_detects_sql_mismatch' -%}
