@@ -10,6 +10,13 @@
 -- full_index_build_interval_days, attributes, primary_key) are updated in place via
 -- ALTER ... SET, so the search index is never gratuitously rebuilt.
 --
+-- Properties fixed at creation (search_column, embedding_model, refresh_mode, initialize and
+-- the defining query) are NOT applied on the ALTER path. A changed search_column or
+-- embedding_model is detected and reported as a warning; a changed query, refresh_mode or
+-- initialize cannot be detected (Snowflake does not expose them in a comparable form), so
+-- after editing any of those run `dbt run --full-refresh`. Note that a replace leaves the
+-- service unable to answer queries until the new index has finished building.
+--
 -- Config options:
 --   search_column (string, required)   : column CORTEX SEARCH SERVICE indexes and searches over
 --   attributes (list, required)        : non-empty list of filterable/returnable column names
@@ -79,9 +86,28 @@
     SHOW CORTEX SEARCH SERVICES LIKE '{{ target_relation.identifier }}' IN SCHEMA {{ target_relation.database }}.{{ target_relation.schema }}
   {%- endset -%}
   {%- set _service_rows = run_query(_show_services_sql) -%}
-  {%- set _service_exists = (_service_rows | length) > 0 -%}
+  {#- Match the name exactly: LIKE treats `_` as a wildcard, so the SHOW can return a
+      different service whose name merely fits the pattern. -#}
+  {%- set _service_row = dbt_cortex_agent.find_show_row(_service_rows.rows, target_relation.identifier) -%}
+  {%- set _service_exists = _service_row is not none -%}
 
   {%- if _service_exists and not should_full_refresh() %}
+
+  {# The ALTER path cannot change properties that are fixed at creation. Rather than let a
+     config edit be ignored silently, warn when the deployed service no longer matches. #}
+  {%- set _deployed_embedding_model = none -%}
+  {%- if embedding_model is not none -%}
+    {%- set _describe_sql -%}
+      DESCRIBE CORTEX SEARCH SERVICE {{ target_relation.database }}.{{ target_relation.schema }}.{{ target_relation.identifier }}
+    {%- endset -%}
+    {%- set _describe_rows = run_query(_describe_sql).rows -%}
+    {%- if _describe_rows | length > 0 -%}
+      {%- set _deployed_embedding_model = _describe_rows[0]['embedding_model'] -%}
+    {%- endif -%}
+  {%- endif -%}
+  {%- for _message in dbt_cortex_agent.get_search_service_immutable_drift(target_relation, search_column, embedding_model, _service_row['search_column'], _deployed_embedding_model) -%}
+    {%- do exceptions.warn(_message) -%}
+  {%- endfor %}
 
   {# One statement per property. dbt's materialization framework requires a statement named
      'main', so the last ALTER takes that name. The list is never empty: target_lag,

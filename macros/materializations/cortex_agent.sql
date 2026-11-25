@@ -116,7 +116,9 @@
 
   {# Inspect existing versions to decide whether LIVE needs (re)creating.
      SHOW VERSIONS returns one row per committed version (name = VERSION$N) plus, when a
-     LIVE working copy exists, one row with an empty name.
+     LIVE working copy exists, one row for it. That row has been observed with an empty name;
+     Snowflake's docs refer to the working copy as LIVE, so a row named LIVE is treated the
+     same way in case the output changes to match.
        - no committed versions  : first run — LIVE does not exist yet, skip ADD LIVE VERSION.
        - committed, no LIVE     : the normal steady state after COMMIT consumed LIVE — restore it.
        - committed, LIVE exists : ADD LIVE VERSION would fail with 099106 ("There is already a
@@ -128,16 +130,19 @@
   {%- endset -%}
   {%- set _agent_rows = run_query(_show_agents_sql) -%}
   {%- set _ns = namespace(has_committed=false, has_live=false) -%}
-  {%- if _agent_rows | length > 0 -%}
+  {#- Match the name exactly: LIKE treats `_` as a wildcard, so the SHOW can return a
+      different agent whose name merely fits the pattern. -#}
+  {%- if dbt_cortex_agent.find_show_row(_agent_rows.rows, target_relation.identifier) is not none -%}
     {%- set _show_versions_sql -%}
       SHOW VERSIONS IN AGENT {{ target_relation.database }}.{{ target_relation.schema }}.{{ target_relation.identifier }}
     {%- endset -%}
     {%- set _version_rows = run_query(_show_versions_sql) -%}
     {%- for _r in _version_rows.rows -%}
-      {%- if _r['name'] -%}
-        {%- set _ns.has_committed = true -%}
-      {%- else -%}
+      {%- set _version_name = (_r['name'] or '') | string | trim -%}
+      {%- if _version_name == '' or (_version_name | upper) == 'LIVE' -%}
         {%- set _ns.has_live = true -%}
+      {%- else -%}
+        {%- set _ns.has_committed = true -%}
       {%- endif -%}
     {%- endfor -%}
   {%- endif -%}

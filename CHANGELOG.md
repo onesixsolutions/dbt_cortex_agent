@@ -28,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README examples and the integration tests set package options under `meta`
 
 ### Fixed
+- Existence checks for agents and search services could match the wrong object. `SHOW ... LIKE '<name>'` treats `_` as a single-character wildcard, so e.g. `SALES_AGENT` also matched `SALESXAGENT`, sending the materialization down the ALTER path for an object that did not exist. The returned name is now compared exactly (`find_show_row` macro).
+- `cortex_search_service` now warns when `search_column` or `embedding_model` in the model config no longer matches the deployed service. These are fixed at creation and were silently ignored on the ALTER path.
+- Agent LIVE-version detection also recognises a `SHOW VERSIONS` row named `LIVE`, not only a row with an empty name
 - MCP servers lost every grant on each `dbt run`: the server is always replaced, replacing drops all grants, and the materialization had no way to re-issue them. Use `mcp_server_grants`.
 - Roles in `agent_grants` could not call the feedback tool: they were granted `USAGE` on the agent but never on the `AGENT_SUBMIT_FEEDBACK` procedure behind it. They are now granted both.
 - `UnexpectedJinjaBlockDeprecation` warning on dbt Core 1.10+ caused by a `do` tag inside a SQL comment in `drop_mcp_server.sql`

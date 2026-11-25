@@ -486,6 +486,13 @@ This split matters because `CREATE OR REPLACE` forces Snowflake to fully rebuild
 
 `search_column`, `embedding_model`, `refresh_mode`, `initialize`, and the defining query itself are immutable once the service is created. To change any of those, run `dbt run --full-refresh`.
 
+A normal run cannot apply a change to those properties, so it does not try:
+
+- A changed `search_column` or `embedding_model` is detected and reported as a **warning** naming the configured and deployed values. The deployed service is left as it was.
+- A changed **query**, `refresh_mode` or `initialize` **cannot be detected** — Snowflake does not expose them in a form that can be compared — so the edit is silently not applied. After changing the model's `SELECT`, always run `dbt run --full-refresh --select <model>`.
+
+`CREATE OR REPLACE` is not free: from the moment it commits until the new index has finished building, the service cannot answer queries, and existing grants are dropped (the materialization re-issues those in `search_service_grants`).
+
 ## Local Development
 
 ### Prerequisites
