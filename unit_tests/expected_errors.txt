@@ -2,5 +2,7 @@
 # Each case is compiled with --vars '{expect_error: <case name>}' and must make dbt fail.
 grant_ownership|cannot grant OWNERSHIP
 grant_ownership_mixed_case|cannot grant OWNERSHIP
+dollar_quote_in_agent_body|the model body contains `$$`
+dollar_quote_in_mcp_body|(mcp_server): the model body contains `$$`
 assertion_helper_detects_mismatch|UNIT TEST FAILED: deliberate mismatch
 assertion_helper_detects_sql_mismatch|UNIT TEST FAILED: deliberate sql mismatch
