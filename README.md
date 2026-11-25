@@ -24,7 +24,7 @@ Add to your project's `packages.yml`:
 ```yaml
 packages:
   - git: "https://github.com/onesixsolutions/dbt_cortex_agent"
-    revision: "1.1.0"
+    revision: "1.2.0"
 ```
 
 Once this package is listed on the [dbt Package Hub](https://hub.getdbt.com/), you'll be able to install it via:
@@ -97,17 +97,19 @@ Every option below except `materialized` is a package option: set it under `meta
 | Option | Type | Required | Description |
 |---|---|---|---|
 | `materialized` | string | Yes | Must be `'cortex_agent'` |
-| `comment` | string | No | Agent description visible in Snowflake |
-| `profile` | string (JSON) | No | `{"display_name": "...", "avatar": "...", "color": "..."}` |
+| `comment` | string | No | Agent description visible in Snowflake. Applied on every run, and to all versions at once — it belongs to the agent, not to a version. |
+| `profile` | string (JSON) | No | `{"display_name": "...", "avatar": "...", "color": "..."}`. Applied on every run, and to all versions at once. |
 | `agent_grants` | list or map | No | Who gets access to the agent. A list of role names grants `USAGE` to each, e.g. `['my_role']`; a map grants any agent privilege, e.g. `{'usage': ['my_role'], 'monitor': ['ops_role']}`. See [Grants](#grants). With `create_feedback_table: true` the `USAGE` grantees also get `USAGE` on the `AGENT_SUBMIT_FEEDBACK` procedure. |
 | `revoke_unlisted_grants` | bool | No | Revoke privileges held on the agent by account roles that `agent_grants` does not list. Defaults to `false`. See [Grants](#grants). |
-| `copy_grants` | bool | No | Add `COPY GRANTS` to `CREATE OR REPLACE AGENT` so privileges granted on the agent outside of dbt survive a replace. Defaults to `true`. Only relevant when the agent is replaced — `enable_versioning: false` or `dbt run --full-refresh`. |
+| `copy_grants` | bool | No | Add `COPY GRANTS` to `CREATE OR REPLACE AGENT` so privileges granted on the agent outside of dbt survive a replace. Defaults to `true`. Only relevant when the agent is replaced — `enable_versioning: false`, or `--full-refresh` with `replace_on_full_refresh: true`. |
 | `create_feedback_table` | bool | No | Whether to create the feedback table and procedure. Defaults to `false`. Set to `true` to enable. See [Feedback Tool](#feedback-tool). |
 | `feedback_schema` | string | No | Schema for the feedback table and `AGENT_SUBMIT_FEEDBACK` procedure. Accepts `'SCHEMA'` or `'DB.SCHEMA'`. Defaults to the agent's own database and schema. See [Feedback Tool](#feedback-tool). |
 | `feedback_table` | string | No | Fully-qualified table name override for user feedback. Defaults to `{feedback_schema}.AGENT_FEEDBACK`. Ignored when `create_feedback_table` is `false`. See [Feedback Tool](#feedback-tool). |
 | `feedback_execute_as` | string | No | Execution rights for the `AGENT_SUBMIT_FEEDBACK` procedure. `'caller'` (default) captures the end user via `current_user()`. Use `'owner'` if the calling role lacks `INSERT` on the feedback table. See [Feedback Tool](#feedback-tool). |
-| `enable_versioning` | bool | No | Whether to use Snowflake agent versioning. Defaults to `true`. When `true`, uses `CREATE AGENT IF NOT EXISTS` + `ALTER AGENT MODIFY LIVE VERSION` instead of `CREATE OR REPLACE AGENT`, preserving version history across runs. Set to `false` in dev environments to skip versioning overhead. `dbt run --full-refresh` always falls back to `CREATE OR REPLACE`, resetting history. |
-| `auto_commit` | bool | No | When `enable_versioning=true`, automatically snapshot the LIVE version into a new named version after each run. Defaults to `true`. Set to `false` to accumulate spec changes in LIVE without committing, then commit manually via `ALTER AGENT COMMIT`. |
+| `enable_versioning` | bool | No | Whether to use Snowflake agent versioning. Defaults to `true`. When `true`, the agent is created once and later runs update it through `ALTER AGENT`, preserving version history. When `false`, every run issues `CREATE OR REPLACE AGENT` — useful in dev, but it resets the agent each time. See [Versioning](#versioning). |
+| `commit_only_on_change` | bool | No | Compare the compiled specification with the deployed one and skip the update and commit when they are the same, so a run that changes nothing adds no version. Defaults to `true`. Set to `false` to commit a version on every run. |
+| `replace_on_full_refresh` | bool | No | Let `dbt run --full-refresh` replace a versioned agent with `CREATE OR REPLACE AGENT`, **deleting its version history**. Defaults to `false`: a full refresh deploys a versioned agent like any other run. See [Full refresh](#full-refresh). |
+| `auto_commit` | bool | No | When `enable_versioning=true`, snapshot the LIVE version into a new named version after a run that changed the specification. Defaults to `true`. Set to `false` to accumulate spec changes in LIVE without committing, then commit manually via `ALTER AGENT COMMIT`. |
 | `version_comment` | string | No | Comment attached to each committed version snapshot. Only used when `enable_versioning=true` and `auto_commit=true`. |
 | `set_default_version` | bool | No | Promote the newly committed version to DEFAULT so end users (and Snowsight's "In use") get it. Defaults to `true`. Only used when `enable_versioning=true` and `auto_commit=true`. `COMMIT` alone does not move the DEFAULT pointer — see [Version promotion](#version-promotion). |
 
@@ -198,12 +200,34 @@ The model body is passed verbatim as the agent YAML specification to Snowflake. 
 By default (`enable_versioning=true`, `auto_commit=true`) every `dbt run`:
 
 1. Creates the agent if it doesn't exist (`CREATE AGENT IF NOT EXISTS`)
-2. Restores a LIVE working copy from the last committed version (`ALTER AGENT ADD LIVE VERSION FROM LAST`), unless a LIVE copy already exists
-3. Updates the LIVE copy with the latest compiled spec (`ALTER AGENT MODIFY LIVE VERSION SET SPECIFICATION`)
-4. Commits the LIVE copy as a new named version — `VERSION$1`, `VERSION$2`, … (`ALTER AGENT COMMIT`)
-5. Promotes that new version to DEFAULT (`ALTER AGENT SET DEFAULT_VERSION = 'LAST'`)
+2. Applies `comment` and `profile`, if set (`ALTER AGENT ... SET`). These belong to the agent rather than to a version, so they take effect immediately for every version.
+3. Compares the compiled specification with the newest committed version. **If they are the same, it stops here** — no version is added.
+4. Otherwise restores a LIVE working copy from the last committed version (`ALTER AGENT ADD LIVE VERSION FROM LAST`), unless one already exists
+5. Updates the LIVE copy with the compiled spec (`ALTER AGENT MODIFY LIVE VERSION SET SPECIFICATION`)
+6. Commits the LIVE copy as a new named version — `VERSION$2`, `VERSION$3`, … (`ALTER AGENT COMMIT`)
+7. Promotes the newest version to DEFAULT (`ALTER AGENT SET DEFAULT_VERSION = 'LAST'`). This runs whether or not a version was added.
 
-Version history accumulates across runs. `dbt run --full-refresh` falls back to `CREATE OR REPLACE AGENT`, resetting all history.
+So the version history records each change to the specification once, and a scheduled job that runs the agent model without changing it leaves the history alone.
+
+### Change detection
+
+Step 3 parses both the model body and the specification Snowflake returns (`SHOW VERSIONS IN AGENT`) and compares them as data, so formatting, comments and key order don't count as changes. The comparison is exact and errs on the side of deploying: if the two can't be shown to be identical, the run proceeds as if the spec had changed. The worst outcome of a mismatch is one redundant version, never a skipped deploy.
+
+Things that are **not** part of the specification, and so never create a version on their own: `comment`, `profile`, `version_comment`, and grants.
+
+With `auto_commit=false` the comparison is against the LIVE working copy instead, since that is what such a run updates.
+
+To go back to committing a version on every run, set `commit_only_on_change: false`.
+
+### Full refresh
+
+`dbt run --full-refresh` does **not** replace a versioned agent. `CREATE OR REPLACE AGENT` resets an agent to `VERSION$1`, permanently deleting its version history, and `--full-refresh` is commonly run across a whole project to rebuild incremental models — which would silently wipe every agent in it. A full refresh therefore deploys a versioned agent exactly like a normal run, and says so in the log.
+
+To deliberately replace an agent and start its history over, opt in on that model and run it with `--full-refresh`:
+
+```sql
+{{ config(materialized='cortex_agent', meta={'replace_on_full_refresh': true}) }}
+```
 
 ### Version promotion
 
@@ -246,9 +270,11 @@ Or per-model:
 {{ config(materialized='cortex_agent', meta={'auto_commit': false}) }}
 ```
 
+Only the agent is versioned. Semantic views, search services and procedures that the agent's tools use are shared by every version, including the one end users are on — changing one of those changes behaviour for all versions at once, and rolling an agent back to an earlier version does not roll them back.
+
 ## Idempotency
 
-With versioning enabled (default), every `dbt run` preserves history — re-runs are safe and create a new committed version. With `enable_versioning=false`, every run issues `CREATE OR REPLACE AGENT`. `dbt run --full-refresh` always uses `CREATE OR REPLACE AGENT`, resetting all version history.
+With versioning enabled (default), re-running an unchanged agent is a no-op for its version history, and running a changed one adds exactly one version. With `enable_versioning=false`, every run issues `CREATE OR REPLACE AGENT`. A versioned agent is only replaced by `--full-refresh` together with `replace_on_full_refresh: true`.
 
 Replacing an agent would normally drop every privilege granted on it. The materialization adds `COPY GRANTS` to `CREATE OR REPLACE AGENT`, so existing grants (other than `OWNERSHIP`) carry over. Set `copy_grants: false` to get a clean slate on each replace, leaving only the roles in `agent_grants`.
 
@@ -260,7 +286,7 @@ These materializations deploy object types dbt has no built-in concept of, so a 
 - **dbt's native `grants` config is not applied.** dbt's built-in grant handling only knows tables and views. Use `agent_grants`, `search_service_grants` or `mcp_server_grants` instead (see [Grants](#grants)); a model that sets the native `grants` config gets a warning.
 - **`persist_docs` is not applied.** Use the `comment` option to describe an agent or search service in Snowflake.
 - **Object names are used unquoted**, as `database.schema.identifier`. Names that need quoting (mixed case, special characters) are not supported.
-- **String options are placed in single-quoted SQL literals.** Apostrophes in `comment`, `profile` and `version_comment` are escaped for you. The YAML body is placed in a `$$ ... $$` block, so it must not itself contain `$$`.
+- **String options are placed in single-quoted SQL literals.** Apostrophes in `comment`, `profile` and `version_comment` are escaped for you. The YAML body is placed in a `$$ ... $$` block, so it must not itself contain `$$`; a body that does fails at compile time with a message naming the model.
 - **Snowflake does not validate a specification's tools when the object is created.** A misspelled key or a reference to a missing object deploys successfully and only shows up when the tool is used — test the agent after deploying it.
 - **Models sharing a feedback schema share one `AGENT_SUBMIT_FEEDBACK` procedure**, which each of them replaces on every run.
 
@@ -654,13 +680,14 @@ To add a test, add assertions to a model in `unit_tests/models/` using the helpe
 
 `integration_tests/` deploys real agents, MCP servers, search services and evaluation configs into a Snowflake schema and asserts on the result with singular tests. Because `SHOW` and `DESCRIBE` cannot be used as subqueries, "capture" models (`*_describe`, `*_versions`, `*_grants`) run the statement in a pre-hook and store its output in a table for the tests to read.
 
-Some behaviour only appears on a **second** run against existing objects: the `ALTER CORTEX SEARCH SERVICE` path, committing a second agent version, and `COPY GRANTS` on `CREATE OR REPLACE AGENT`. CI therefore runs the models twice — the second time with `--vars '{second_run: true}'` — before running the tests with the same var:
+Some behaviour only appears on a **second** run against existing objects: the `ALTER CORTEX SEARCH SERVICE` path, committing a second agent version when the spec changes (and none when it doesn't), re-applying an agent's comment and profile, and `COPY GRANTS` on `CREATE OR REPLACE AGENT`. CI therefore runs the models twice — the second time with `--vars '{second_run: true}'` — then runs the versioned agents once more with `--full-refresh`, which must leave their history intact, before running the tests with the same var:
 
 ```bash
 cd integration_tests
 dbt deps
 dbt run
 dbt run --vars '{second_run: true}'
+dbt run --full-refresh --select cortex_agent_versioned_test cortex_agent_versioned_test_versions cortex_agent_unchanged_test cortex_agent_unchanged_test_versions --vars '{second_run: true}'
 dbt test --vars '{second_run: true}'
 ```
 

@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-25
+
+Makes agent versioning safe to run on a schedule and under `--full-refresh`.
+
+**Upgrade notes — behaviour changes**
+- **A run that does not change an agent's specification no longer commits a version.** Previously every run added one. Set `commit_only_on_change: false` for the old behaviour.
+- **`dbt run --full-refresh` no longer replaces a versioned agent.** It used to issue `CREATE OR REPLACE AGENT`, deleting the agent's version history. To replace an agent on a full refresh, set `replace_on_full_refresh: true` on that model. Agents with `enable_versioning: false` are unaffected (they are replaced on every run, as before).
+- `comment` and `profile` are now applied to existing versioned agents on every run. If you changed either in your project after an agent was created, that change will take effect on the next run.
+
+### Added
+- `commit_only_on_change` config option for `cortex_agent` (default `true`) — the compiled specification is compared with the deployed one, and the update and commit are skipped when they are the same
+- `replace_on_full_refresh` config option for `cortex_agent` (default `false`)
+- `summarize_agent_versions`, `agent_spec_matches`, `snowflake__alter_cortex_agent_properties` and `assert_no_dollar_quote` macros
+- CI runs the versioned agents a third time with `--full-refresh` and checks their history survives
+
+### Changed
+- The versioned path no longer runs `SHOW AGENTS` to check whether the agent exists; it creates the agent if needed and then reads `SHOW VERSIONS IN AGENT`
+
+### Fixed
+- A new agent version was committed on every run, whether or not the specification had changed, so a scheduled job filled the version history with identical versions
+- `dbt run --full-refresh` — routinely run across a whole project — replaced every versioned agent in it, deleting their version history
+- `comment` and `profile` were only applied when a versioned agent was first created; later edits were silently ignored. They are now applied with `ALTER AGENT ... SET` on every run
+- A model body containing `$$` ended the dollar-quoted string it is sent in and produced an unrelated-looking Snowflake syntax error. It now fails at compile time with a message naming the model
+
 ## [1.1.0] - 2026-11-25
 
 Adds dbt v2 support, fixes several ways grants were lost or never issued, and adds an offline unit test suite. Existing dbt v1 projects need no changes.
