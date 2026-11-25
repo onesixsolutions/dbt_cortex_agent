@@ -8,6 +8,9 @@
 -- git and is re-materialised on every deploy, including after a --full-refresh of the agent.
 -- NOTE: EXECUTE_AI_EVALUATION requires `dataset_name` under the `dataset:` block itself
 -- (in addition to evaluation.source_metadata.dataset_name), else it errors "Null dataset_name".
+-- NOTE: the `dataset:` block makes every START try to create the dataset again, and Snowflake
+-- documents that a run can fail once `dataset_name` already exists. After the first run,
+-- drop the block and keep evaluation.source_metadata.dataset_name pointing at the dataset.
 --
 -- On every `dbt run` the materialization (idempotently):
 --   1. Ensures a stage exists to hold eval-config YAML files.

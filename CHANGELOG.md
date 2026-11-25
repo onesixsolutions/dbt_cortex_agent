@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `snowflake__grant_cortex_agent_usage`, `snowflake__grant_cortex_search_service_usage` and `snowflake__alter_cortex_search_service` now return a **list of SQL statements** instead of one `;`-separated string, and the materializations execute each statement on its own. Sending several statements in one call relied on dbt-snowflake's client-side statement splitting, which is not guaranteed on the dbt v2 engine. Only affects projects that call these macros directly.
 - README examples and the integration tests set package options under `meta`
 
+### Documentation
+- README reviewed against the current Snowflake documentation: new [Required Privileges](README.md#required-privileges) section covering what the deploying role and consuming roles need beyond the object grant; a section for the previously undocumented `cortex_agent_evaluation` materialization, including the `dataset`-block re-run caveat, `agent_version`, metric version pinning and the privileges needed to start a run; current MCP server tool types (`CODING_AGENT`, `tool_config`, `annotations`); current agent tool types and the `tool_not_accessible` setting; and a note on Snowflake's native feedback endpoint
+
 ### Fixed
 - Existence checks for agents and search services could match the wrong object. `SHOW ... LIKE '<name>'` treats `_` as a single-character wildcard, so e.g. `SALES_AGENT` also matched `SALESXAGENT`, sending the materialization down the ALTER path for an object that did not exist. The returned name is now compared exactly (`find_show_row` macro).
 - `cortex_search_service` now warns when `search_column` or `embedding_model` in the model config no longer matches the deployed service. These are fixed at creation and were silently ignored on the ALTER path.

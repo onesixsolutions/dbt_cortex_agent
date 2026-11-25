@@ -247,11 +247,57 @@ Replacing an agent would normally drop every privilege granted on it. The materi
 
 Built-in tool types (add to the `tools:` section of your spec body):
 
-- `cortex_analyst_text_to_sql` — text-to-SQL via a Cortex Analyst semantic model
+- `cortex_analyst_text_to_sql` — text-to-SQL via a Cortex Analyst semantic view or semantic model
 - `cortex_search` — semantic search over unstructured content
 - `generic` — any Snowflake stored procedure or UDF (see [Feedback Tool](#feedback-tool) for an example)
+- `web_search` — web search (must be enabled for the account by an `ACCOUNTADMIN`)
+- `data_to_chart` — chart generation (available by default)
+
+MCP connectors are configured through the top-level `mcp_servers` key of the spec. Because the body is a passthrough, anything else Snowflake adds to the specification works without a package change.
 
 Refer to the [Snowflake CREATE AGENT docs](https://docs.snowflake.com/en/sql-reference/sql/create-agent) for the full and up-to-date YAML specification reference.
+
+### Tools the caller cannot access
+
+A role needs its own privileges on every object an agent's tools use (see [Required Privileges](#required-privileges)). By default Snowflake does **not** fail a run when the caller lacks one: the tool is skipped and the agent answers without it, which looks like a worse answer rather than an error. To make a missing privilege fail loudly, set this in the spec body:
+
+```yaml
+orchestration:
+  tool_not_accessible: reject
+```
+
+## Required Privileges
+
+Summarised from the Snowflake documentation; check it for the authoritative list.
+
+### The role running dbt
+
+| To deploy | The role needs |
+|---|---|
+| Any object | `USAGE` on the database and schema, and to **own** the object on later runs — replacing an agent, MCP server or search service requires `OWNERSHIP` |
+| `cortex_agent` | `CREATE AGENT` on the schema |
+| `mcp_server` | `CREATE MCP SERVER` on the schema |
+| `cortex_search_service` | `CREATE CORTEX SEARCH SERVICE` on the schema, `SELECT` on the tables the query reads, `USAGE` on the warehouse, and the `SNOWFLAKE.CORTEX_USER` or `SNOWFLAKE.CORTEX_EMBED_USER` database role |
+| Feedback tool | `CREATE TABLE` and `CREATE PROCEDURE` on the feedback schema |
+| `cortex_agent_evaluation` | `CREATE STAGE` on the schema; see [Agent Evaluations](#agent-evaluations) for what starting a run needs |
+| `revoke_unlisted_grants` | to have made the grants being revoked, or `MANAGE GRANTS` |
+
+### Roles that use the objects
+
+The grants options (`agent_grants`, `search_service_grants`, `mcp_server_grants`) grant privileges on **the object itself and nothing else**. Snowflake is explicit that `USAGE` on an agent is not sufficient on its own. A role that calls an agent also needs:
+
+- `USAGE` on the database and schema containing the agent, and on those containing each tool's object
+- a Cortex database role: `SNOWFLAKE.CORTEX_USER` (granted to `PUBLIC` by default) or `SNOWFLAKE.CORTEX_AGENT_USER`, plus `SNOWFLAKE.CORTEX_ANALYST_USER` if the agent uses Cortex Analyst tools
+- `USAGE` on every Cortex Search Service the agent searches
+- `SELECT` on every semantic view the agent queries
+- `USAGE` on every function or procedure used as a custom tool (the package grants this for its own `AGENT_SUBMIT_FEEDBACK` procedure)
+- `USAGE` on every warehouse named in a tool's `execution_environment`
+
+The same applies to an MCP server: `USAGE` on the server lets a role connect and call tools, and each tool's underlying object needs its own grant. Tools of type `SYSTEM_EXECUTE_SQL` additionally require `SNOWFLAKE.CORTEX_USER` or `SNOWFLAKE.CORTEX_AGENT_USER`.
+
+A Cortex Search Service runs with **owner's rights**: any role with `USAGE` on the service can retrieve everything it indexes, whatever that role's privileges on the source tables, and masking and row access policies are evaluated as the owner. Grant `USAGE` on a service accordingly.
+
+To grant across a whole schema rather than per object, Snowflake supports future grants, which also survive a replace — e.g. `GRANT USAGE ON FUTURE AGENTS IN SCHEMA my_db.my_schema TO ROLE analyst_role;`.
 
 ## Feedback Tool
 
@@ -298,6 +344,8 @@ To enable feedback provisioning, set `create_feedback_table: true`:
     meta={'create_feedback_table': true}
 ) }}
 ```
+
+> Snowflake also records feedback natively: a REST endpoint (`POST .../agents/{name}:feedback`) stores it as AI Observability events, readable with `SNOWFLAKE.LOCAL.GET_AI_OBSERVABILITY_EVENTS` by a role holding `MONITOR` on the agent. That path has no SQL or in-conversation equivalent, and feedback text is redacted without the `READ UNREDACTED AI OBSERVABILITY EVENTS TABLE` account privilege. The tool below is for capturing feedback from inside the conversation into a table you own.
 
 Add the tool entry to your spec body so the agent can call it. Update the `identifier` to match your `feedback_schema` if you set one:
 
@@ -402,7 +450,9 @@ DESCRIBE MCP SERVER my_db.my_schema.data_mcp_server;
 
 Notes specific to MCP servers:
 
-- The `tools` array is required and must contain at least one tool. Supported `type` values include `CORTEX_SEARCH_SERVICE_QUERY`, `CORTEX_ANALYST_MESSAGE`, `CORTEX_AGENT_RUN`, `SYSTEM_EXECUTE_SQL`, and `GENERIC`. Each tool that wraps an existing object needs a fully-qualified `identifier` — use `{{ ref() }}` to wire it into the dbt DAG so the MCP server always runs after its upstream objects.
+- The spec needs a `tools` array, a `tool_config` list, or both. Supported tool `type` values are `CORTEX_SEARCH_SERVICE_QUERY`, `CORTEX_ANALYST_MESSAGE` (semantic views only), `CORTEX_AGENT_RUN`, `SYSTEM_EXECUTE_SQL`, `GENERIC`, and `CODING_AGENT`. Each tool that wraps an existing object needs a fully-qualified `identifier` — use `{{ ref() }}` to wire it into the dbt DAG so the MCP server always runs after its upstream objects.
+- `tool_config` with `type: "CORTEX_AGENT_RUN"` and `selection: "all"` exposes every agent the caller can use, without listing each one. `GENERIC` and `CORTEX_AGENT_RUN` tools accept optional `annotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`), which are hints to the client, not enforcement.
+- A server is limited to 50 tools. A server that exposes `SYSTEM_EXECUTE_SQL` lets clients run SQL directly rather than going through an agent; Snowflake recommends keeping that on a separate server from governed, agent-only access.
 - Unlike agents, the MCP server DDL has **no `COMMENT` or `PROFILE` clause**, so everything except access grants lives in the spec body.
 - **Grants are dropped on every run unless you list them.** Snowflake has no `ALTER MCP SERVER` and no `COPY GRANTS` for MCP servers, so each `dbt run` replaces the server and Snowflake drops every grant on it. Set `mcp_server_grants` (a list of role names, or a privilege map — see [Grants](#grants)) and the materialization re-issues `GRANT USAGE ON MCP SERVER` after each replace. A grant made by hand will not survive the next run.
 - `USAGE` on the server lets a role connect, list tools and call them, but **not** use the objects behind the tools. The role separately needs `USAGE` on each search service, agent, function or procedure, `SELECT` on each semantic view, and `USAGE` on the warehouse.
@@ -492,6 +542,57 @@ A normal run cannot apply a change to those properties, so it does not try:
 - A changed **query**, `refresh_mode` or `initialize` **cannot be detected** — Snowflake does not expose them in a form that can be compared — so the edit is silently not applied. After changing the model's `SELECT`, always run `dbt run --full-refresh --select <model>`.
 
 `CREATE OR REPLACE` is not free: from the moment it commits until the new index has finished building, the service cannot answer queries, and existing grants are dropped (the materialization re-issues those in `search_service_grants`).
+
+## Agent Evaluations
+
+The `cortex_agent_evaluation` materialization version-controls a [Cortex Agent evaluation](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-evaluations) run configuration. The model body is the evaluation YAML (`dataset`, `evaluation` and `metrics` blocks). On every run the materialization writes it to a stage as `<model>.yaml`; it only starts a (paid) evaluation run when asked to.
+
+```sql
+-- models/evals/revenue_assistant_eval.sql
+{{ config(materialized='cortex_agent_evaluation', tags=['eval']) }}
+
+evaluation:
+  agent_params:
+    agent_name: "{{ ref('revenue_assistant') }}"
+    agent_type: "CORTEX AGENT"
+  source_metadata:
+    type: "dataset"
+    dataset_name: "REVENUE_ASSISTANT_EVAL_SET"
+
+metrics:
+  - answer_correctness
+  - logical_consistency
+```
+
+Use `{{ ref() }}` for the agent (and for `dataset.table_name`, if you include a `dataset` block) so the config is redeployed after the objects it points at. Write prose as Jinja comments (`{# ... #}`), not SQL `--` comments: the body is written to the file verbatim, and `--` is not a YAML comment.
+
+| Option | Type | Required | Description |
+|---|---|---|---|
+| `materialized` | string | Yes | Must be `'cortex_agent_evaluation'` |
+| `stage` | string | No | Fully-qualified stage that holds the config files. Defaults to `{database}.{schema}.CORTEX_EVAL_CONFIGS`, created if missing. |
+| `run_on_build` | bool | No | Start an evaluation run on every `dbt run`. Defaults to `false`. |
+| `run_name` | string | No | Evaluation run name. Defaults to `<model>_<run start timestamp>`, which keeps names unique. |
+
+Start a run yourself with:
+
+```sql
+CALL EXECUTE_AI_EVALUATION(
+  'START',
+  OBJECT_CONSTRUCT('run_name', 'revenue_assistant_eval_2026_11_25'),
+  '@my_db.my_schema.CORTEX_EVAL_CONFIGS/revenue_assistant_eval.yaml'
+);
+```
+
+`'STATUS'`, `'CANCEL'` and `'DELETE'` take the same arguments. Read results with `SNOWFLAKE.LOCAL.GET_AI_EVALUATION_DATA('<db>', '<schema>', '<agent>', 'CORTEX AGENT', '<run_name>')`.
+
+Things to know:
+
+- **Runs cost credits.** The agent is invoked once per dataset row and an LLM judge scores each metric per row. That is why `run_on_build` defaults to `false`.
+- **The `dataset` block is for the first run only.** With a `dataset` block present, each `START` tries to create the dataset again, and Snowflake documents that a run can fail when `dataset_name` already exists. Once the dataset is registered, remove the block and keep `evaluation.source_metadata.dataset_name` pointing at it — or create the dataset separately with `SYSTEM$CREATE_EVALUATION_DATASET`.
+- **Evaluating a specific agent version.** Add `agent_version` under `agent_params` — a version (`VERSION$3`), an alias, or `LIVE`, `FIRST`, `LAST`, `DEFAULT`. When omitted, Snowflake evaluates the default version once the agent has two or more committed versions.
+- **Metric versions.** A metric given as a plain string uses the current default version, which Snowflake moves forward over time; scores from different metric versions are not comparable. To keep a series comparable, pin it: `- name: "answer_correctness"` / `version: "v3"`. Metric version `v1` has reached end-of-life, and runs pinned to it fail.
+- **Ground truth is a `VARIANT`.** Use `PARSE_JSON` or `TO_VARIANT` in the dataset model; `OBJECT_CONSTRUCT` returns an `OBJECT` and is not accepted.
+- **Privileges to start a run:** `USAGE` (or `OWNERSHIP`) **and** `MONITOR` (or `OWNERSHIP`) on the agent — grant the latter with `agent_grants: {'monitor': [...]}` — plus `EXECUTE TASK ON ACCOUNT`, `READ` on the config stage, `CREATE TASK` and `CREATE FILE FORMAT` on the current schema, `CREATE DATASET` on the dataset's schema when creating one, a Cortex database role, and access to every tool the agent uses. If the account restricts model access and the role cannot use the judge model, Snowflake reports **scores of 0 with no error**.
 
 ## Local Development
 
