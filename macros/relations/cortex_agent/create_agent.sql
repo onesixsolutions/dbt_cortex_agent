@@ -7,6 +7,10 @@
 -- `agent_grants` silently lose the agent on the next run. With COPY GRANTS, Snowflake
 -- carries all existing grants except OWNERSHIP over to the replacement in the same atomic
 -- operation. It has no effect when the agent does not exist yet.
+--
+-- Clause order: COPY GRANTS goes AFTER COMMENT and PROFILE, immediately before
+-- FROM SPECIFICATION. Snowflake's syntax reference lists it before COMMENT, but that order is
+-- rejected ("syntax error ... unexpected 'comment'"); this order is the one that parses.
 -- Args:
 --   relation      : the target relation object (database, schema, identifier)
 --   specification : compiled YAML agent spec from the model body
@@ -17,14 +21,14 @@
 
   create or replace agent
     {{ relation.database }}.{{ relation.schema }}.{{ relation.identifier }}
-  {%- if copy_grants %}
-  copy grants
-  {%- endif %}
   {%- if comment is not none %}
   comment = '{{ comment }}'
   {%- endif %}
   {%- if profile is not none %}
   profile = '{{ profile }}'
+  {%- endif %}
+  {%- if copy_grants %}
+  copy grants
   {%- endif %}
   from specification
   $$
