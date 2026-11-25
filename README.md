@@ -1,6 +1,15 @@
 # dbt_cortex_agent
 
-A custom dbt materialization for deploying [Snowflake Cortex Agents](https://docs.snowflake.com/en/sql-reference/sql/create-agent) using dbt. Define, version, and run Cortex Agents the same way you manage any other dbt model.
+Custom dbt materializations for deploying [Snowflake Cortex Agents](https://docs.snowflake.com/en/sql-reference/sql/create-agent) and the objects around them with dbt. Define, version, grant and test them the same way you manage any other dbt model.
+
+| Materialization | Deploys | Model body |
+|---|---|---|
+| [`cortex_agent`](#usage) | A Cortex Agent, with Snowflake agent versioning | Agent YAML specification |
+| [`mcp_server`](#mcp-servers) | A Snowflake-managed MCP server | MCP server YAML specification |
+| [`cortex_search_service`](#cortex-search-services) | A Cortex Search Service | `SELECT` query |
+| [`cortex_agent_evaluation`](#agent-evaluations) | A Cortex Agent evaluation run configuration | Evaluation YAML |
+
+Works on dbt v1 and dbt v2.
 
 ## Requirements
 
@@ -15,7 +24,7 @@ Add to your project's `packages.yml`:
 ```yaml
 packages:
   - git: "https://github.com/onesixsolutions/dbt_cortex_agent"
-    revision: "1.0.0"
+    revision: "1.1.0"
 ```
 
 Once this package is listed on the [dbt Package Hub](https://hub.getdbt.com/), you'll be able to install it via:
@@ -34,7 +43,7 @@ dbt deps
 
 ## Usage
 
-Create a model file whose **body is the raw Snowflake agent YAML specification**. The materialization wraps it in `CREATE OR REPLACE AGENT ... FROM SPECIFICATION $$ ... $$`.
+Create a model file whose **body is the raw Snowflake agent YAML specification**. The materialization passes it to Snowflake as the agent's `FROM SPECIFICATION $$ ... $$` — creating the agent on the first run and committing a new version of it on later runs (see [Versioning](#versioning)).
 
 ```sql
 -- models/agents/revenue_assistant.sql
@@ -459,6 +468,11 @@ Notes specific to MCP servers:
 - Like `cortex_agent`, every `dbt run` issues `CREATE OR REPLACE MCP SERVER`, so re-runs are fully idempotent, and Jinja (`{{ ref() }}`, `{{ var() }}`, etc.) works anywhere in the spec.
 - To drop an MCP server explicitly, use the helper macro in a dbt operation or post-hook: `{% do run_query(dbt_cortex_agent.snowflake__get_drop_mcp_server_sql(this)) %}` (or run `DROP MCP SERVER IF EXISTS <db>.<schema>.<name>;` directly).
 
+| Option | Type | Required | Description |
+|---|---|---|---|
+| `materialized` | string | Yes | Must be `'mcp_server'` |
+| `mcp_server_grants` | list or map | No | Who gets access to the server. A list of role names grants `USAGE` to each; a map grants any MCP server privilege. Re-issued after every run. See [Grants](#grants). |
+
 Refer to the [Snowflake CREATE MCP SERVER docs](https://docs.snowflake.com/en/sql-reference/sql/create-mcp-server) for the full and up-to-date specification reference.
 
 ## Cortex Search Services
@@ -639,7 +653,7 @@ Both suites run in CI on dbt v1 and dbt v2. The unit tests run on every pull req
 
 ### Prerequisites
 
-- PowerShell
+- PowerShell, for `scripts/run_tests.ps1` (the integration test runner); the unit test runner `scripts/run_unit_tests.sh` needs a POSIX shell
 - dbt installed in your environment (`pip install dbt-snowflake` for dbt v1, or `pip install dbt` for dbt v2)
 - A Snowflake account with Cortex Agents enabled
 

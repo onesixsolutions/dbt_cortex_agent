@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-25
+
+Adds dbt v2 support, fixes several ways grants were lost or never issued, and adds an offline unit test suite. Existing dbt v1 projects need no changes.
+
+**Upgrade notes**
+- Moving to dbt v2: put package options under `meta` (see README "dbt v2"). Top-level keys still work on dbt v1.
+- `CREATE OR REPLACE AGENT` now includes `COPY GRANTS`. If you relied on a replace clearing an agent's grants, set `copy_grants: false`.
+- `snowflake__grant_cortex_agent_usage`, `snowflake__grant_cortex_search_service_usage` and `snowflake__alter_cortex_search_service` return a list of statements instead of one string. This only matters if your project calls them directly.
+
 ### Added
 - dbt v2 support. The dbt v2 engine rejects config keys it does not know (`Ignored unexpected key`, dbt1060), which made every model using a package option fail to parse. All package options can now be set under `meta` — e.g. `config(materialized='cortex_agent', meta={'comment': '...', 'agent_grants': [...]})` — which works on dbt v1 and v2. Top-level keys keep working on dbt v1, so existing projects are unaffected until they upgrade. When an option is set in both places the `meta` value wins.
 - `get_package_config` macro — reads a package option from `meta`, falling back to the top-level config key

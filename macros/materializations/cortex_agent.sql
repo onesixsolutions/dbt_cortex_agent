@@ -1,6 +1,8 @@
 -- Custom dbt materialization for Snowflake Cortex Agents.
 -- The model body must be a valid Snowflake agent YAML specification.
--- The materialization wraps it in CREATE OR REPLACE AGENT ... FROM SPECIFICATION $$ ... $$.
+-- With versioning (the default) the agent is created once with CREATE AGENT IF NOT EXISTS and
+-- each later run updates and commits a new version; with enable_versioning=false, or on
+-- --full-refresh, it is replaced with CREATE OR REPLACE AGENT ... FROM SPECIFICATION $$ ... $$.
 --
 -- Config options:
 --   comment (string, optional)        : agent-level comment visible in Snowflake
