@@ -90,7 +90,8 @@ Every option below except `materialized` is a package option: set it under `meta
 | `materialized` | string | Yes | Must be `'cortex_agent'` |
 | `comment` | string | No | Agent description visible in Snowflake |
 | `profile` | string (JSON) | No | `{"display_name": "...", "avatar": "...", "color": "..."}` |
-| `agent_grants` | list | No | Role names to grant `USAGE` on the agent, e.g. `['my_role']`. With `create_feedback_table: true` the same roles also get `USAGE` on the `AGENT_SUBMIT_FEEDBACK` procedure. |
+| `agent_grants` | list or map | No | Who gets access to the agent. A list of role names grants `USAGE` to each, e.g. `['my_role']`; a map grants any agent privilege, e.g. `{'usage': ['my_role'], 'monitor': ['ops_role']}`. See [Grants](#grants). With `create_feedback_table: true` the `USAGE` grantees also get `USAGE` on the `AGENT_SUBMIT_FEEDBACK` procedure. |
+| `revoke_unlisted_grants` | bool | No | Revoke privileges held on the agent by account roles that `agent_grants` does not list. Defaults to `false`. See [Grants](#grants). |
 | `copy_grants` | bool | No | Add `COPY GRANTS` to `CREATE OR REPLACE AGENT` so privileges granted on the agent outside of dbt survive a replace. Defaults to `true`. Only relevant when the agent is replaced — `enable_versioning: false` or `dbt run --full-refresh`. |
 | `create_feedback_table` | bool | No | Whether to create the feedback table and procedure. Defaults to `false`. Set to `true` to enable. See [Feedback Tool](#feedback-tool). |
 | `feedback_schema` | string | No | Schema for the feedback table and `AGENT_SUBMIT_FEEDBACK` procedure. Accepts `'SCHEMA'` or `'DB.SCHEMA'`. Defaults to the agent's own database and schema. See [Feedback Tool](#feedback-tool). |
@@ -100,6 +101,48 @@ Every option below except `materialized` is a package option: set it under `meta
 | `auto_commit` | bool | No | When `enable_versioning=true`, automatically snapshot the LIVE version into a new named version after each run. Defaults to `true`. Set to `false` to accumulate spec changes in LIVE without committing, then commit manually via `ALTER AGENT COMMIT`. |
 | `version_comment` | string | No | Comment attached to each committed version snapshot. Only used when `enable_versioning=true` and `auto_commit=true`. |
 | `set_default_version` | bool | No | Promote the newly committed version to DEFAULT so end users (and Snowsight's "In use") get it. Defaults to `true`. Only used when `enable_versioning=true` and `auto_commit=true`. `COMMIT` alone does not move the DEFAULT pointer — see [Version promotion](#version-promotion). |
+
+## Grants
+
+`agent_grants`, `search_service_grants` and `mcp_server_grants` all accept the same two forms.
+
+A **list** grants `USAGE` to each role:
+
+```sql
+{{ config(materialized='cortex_agent', meta={'agent_grants': ['analyst_role', 'support_role']}) }}
+```
+
+A **map of privilege to roles**, like dbt's native `grants` config, grants any privilege the object type supports:
+
+```sql
+{{ config(
+    materialized='cortex_agent',
+    meta={'agent_grants': {'usage': ['analyst_role'], 'monitor': ['ops_role']}}
+) }}
+```
+
+| Object | Privileges |
+|---|---|
+| Agent | `usage` (run the agent), `monitor` (view threads, logs and traces; needed to run and read evaluations), `modify` (alter or drop) |
+| Cortex Search Service | `usage` (query), `monitor` (view refresh history), `operate` (suspend/resume, refresh, change warehouse and target lag) |
+| MCP server | `usage` (connect, list and call tools), `modify` (describe or drop) |
+
+`OWNERSHIP` cannot be granted through these options.
+
+A grantee is an account role unless you prefix it with `database role `:
+
+```yaml
+agent_grants:
+  usage: ['analyst_role', 'database role ANALYTICS.AGENT_READER']
+```
+
+### Revoking
+
+By default grants are **additive**: the materialization grants what is listed and never revokes anything, so removing a role from the list leaves its access in place. Set `revoke_unlisted_grants: true` on an agent or search service to make the list the full definition of access — after each run, any privilege held by an account role that is not listed is revoked.
+
+- Only grants to account roles are revoked. Grants to database roles, shares and application roles are left alone, and `OWNERSHIP` is never touched.
+- Snowflake only lets a role revoke grants that it (or a role below it) made, unless it holds `MANAGE GRANTS`. A grant made by an unrelated role makes the `REVOKE` — and so the model — fail.
+- MCP servers have no such option: they are replaced on every run, which already drops every grant not in `mcp_server_grants`.
 
 ## dbt v2
 
@@ -361,7 +404,7 @@ Notes specific to MCP servers:
 
 - The `tools` array is required and must contain at least one tool. Supported `type` values include `CORTEX_SEARCH_SERVICE_QUERY`, `CORTEX_ANALYST_MESSAGE`, `CORTEX_AGENT_RUN`, `SYSTEM_EXECUTE_SQL`, and `GENERIC`. Each tool that wraps an existing object needs a fully-qualified `identifier` — use `{{ ref() }}` to wire it into the dbt DAG so the MCP server always runs after its upstream objects.
 - Unlike agents, the MCP server DDL has **no `COMMENT` or `PROFILE` clause**, so everything except access grants lives in the spec body.
-- **Grants are dropped on every run unless you list them.** Snowflake has no `ALTER MCP SERVER` and no `COPY GRANTS` for MCP servers, so each `dbt run` replaces the server and Snowflake drops every grant on it. Set `mcp_server_grants` (a list of role names) and the materialization re-issues `GRANT USAGE ON MCP SERVER` after each replace. A grant made by hand will not survive the next run.
+- **Grants are dropped on every run unless you list them.** Snowflake has no `ALTER MCP SERVER` and no `COPY GRANTS` for MCP servers, so each `dbt run` replaces the server and Snowflake drops every grant on it. Set `mcp_server_grants` (a list of role names, or a privilege map — see [Grants](#grants)) and the materialization re-issues `GRANT USAGE ON MCP SERVER` after each replace. A grant made by hand will not survive the next run.
 - `USAGE` on the server lets a role connect, list tools and call them, but **not** use the objects behind the tools. The role separately needs `USAGE` on each search service, agent, function or procedure, `SELECT` on each semantic view, and `USAGE` on the warehouse.
 - Like `cortex_agent`, every `dbt run` issues `CREATE OR REPLACE MCP SERVER`, so re-runs are fully idempotent, and Jinja (`{{ ref() }}`, `{{ var() }}`, etc.) works anywhere in the spec.
 - To drop an MCP server explicitly, use the helper macro in a dbt operation or post-hook: `{% do run_query(dbt_cortex_agent.snowflake__get_drop_mcp_server_sql(this)) %}` (or run `DROP MCP SERVER IF EXISTS <db>.<schema>.<name>;` directly).
@@ -431,7 +474,8 @@ As with agents, set every option except `materialized` under `meta` (see [dbt v2
 | `request_logging` | bool | No | Enables request logging for monitoring queries. Defaults to `false`. |
 | `auto_suspend` | number | No | Seconds of inactivity before suspending. Minimum `1800` (30 minutes). |
 | `comment` | string | No | Descriptive text visible in Snowflake. |
-| `search_service_grants` | list | No | Role names to grant `USAGE` on the search service, e.g. `['my_role']`. |
+| `search_service_grants` | list or map | No | Who gets access to the service. A list of role names grants `USAGE` to each; a map grants any search service privilege. See [Grants](#grants). |
+| `revoke_unlisted_grants` | bool | No | Revoke privileges held on the service by account roles that `search_service_grants` does not list. Defaults to `false`. See [Grants](#grants). |
 
 ### How It Works
 

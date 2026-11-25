@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `snowflake__grant_mcp_server_usage` macro
 - `copy_grants` config option for `cortex_agent` (default `true`) — adds `COPY GRANTS` to `CREATE OR REPLACE AGENT`
 - `snowflake__grant_feedback_procedure_usage` macro
+- `agent_grants`, `search_service_grants` and `mcp_server_grants` now also accept a map of privilege to roles (e.g. `{'usage': ['analyst_role'], 'monitor': ['ops_role']}`), so privileges other than `USAGE` — `MONITOR`, `MODIFY`, `OPERATE` — can be managed. The list form still grants `USAGE`.
+- Database roles as grantees: prefix the name with `database role `, e.g. `'database role ANALYTICS.AGENT_READER'`
+- `revoke_unlisted_grants` config option for `cortex_agent` and `cortex_search_service` (default `false`) — revokes privileges held by account roles that the grants option does not list, making it the full definition of access instead of an additive list
+- `normalize_grants`, `grantee_clause`, `get_grant_statements`, `get_revoke_unlisted_grant_statements` and `get_revoke_statements_for_rows` macros
 
 ### Changed
 - `CREATE OR REPLACE AGENT` (used when `enable_versioning: false` and on `--full-refresh`) now includes `COPY GRANTS`, so privileges granted on the agent outside of `agent_grants` are no longer dropped on each replace. Set `copy_grants: false` for the previous behaviour.

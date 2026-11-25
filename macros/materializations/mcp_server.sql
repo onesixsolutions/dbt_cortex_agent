@@ -7,7 +7,11 @@
 -- DDL, so the spec body carries everything except access grants.
 --
 -- Config options:
---   mcp_server_grants (list, optional) : role names to grant USAGE on the MCP server.
+--   mcp_server_grants (list or map, optional) : who gets access to the MCP server. A list of
+--                                        role names grants USAGE to each; a map of privilege ->
+--                                        roles grants any MCP server privilege (usage, modify).
+--                                        Prefix a name with 'database role ' to grant to a
+--                                        database role.
 --
 -- Grants: Snowflake has no ALTER MCP SERVER, so every run is a CREATE OR REPLACE, and
 -- replacing a server DROPS EVERY GRANT on it (there is no COPY GRANTS clause for MCP

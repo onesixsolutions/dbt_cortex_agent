@@ -33,19 +33,16 @@
 {% endmacro %}
 
 
--- Builds the GRANT USAGE ON PROCEDURE statements that let each role call the
--- AGENT_SUBMIT_FEEDBACK procedure. USAGE on the agent alone is not enough for a custom tool:
+-- Builds the GRANT USAGE ON PROCEDURE statements that let each grantee call the
+-- AGENT_SUBMIT_FEEDBACK procedure. `grantees` is a list in the same form as the entries of
+-- a grants option (account role names, or 'database role <name>'). USAGE on the agent alone is not enough for a custom tool:
 -- the calling role also needs USAGE on the procedure behind it, and by default Snowflake
 -- skips an inaccessible tool silently rather than failing the run.
 -- Returns a LIST of SQL strings, one per role.
 --
 -- Note: with execute_as='caller' (the default) the role additionally needs INSERT on the
 -- feedback table. That grant is left to the project, since the table may be shared.
-{% macro snowflake__grant_feedback_procedure_usage(feedback_db, feedback_schema, roles) %}
+{% macro snowflake__grant_feedback_procedure_usage(feedback_db, feedback_schema, grantees) %}
   {%- set _procedure = feedback_db ~ '.' ~ feedback_schema ~ '.AGENT_SUBMIT_FEEDBACK(varchar, number, varchar, varchar)' -%}
-  {%- set _statements = [] -%}
-  {%- for role in roles -%}
-    {%- do _statements.append('grant usage on procedure ' ~ _procedure ~ ' to role ' ~ role) -%}
-  {%- endfor -%}
-  {{ return(_statements) }}
+  {{ return(dbt_cortex_agent.get_grant_statements('procedure', _procedure, grantees)) }}
 {% endmacro %}

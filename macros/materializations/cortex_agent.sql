@@ -5,10 +5,18 @@
 -- Config options:
 --   comment (string, optional)        : agent-level comment visible in Snowflake
 --   profile (string, optional)        : JSON object with display_name, avatar, and color
---   agent_grants (list, optional)     : list of role names to grant USAGE on the agent.
---                                       When create_feedback_table=true the same roles are
+--   agent_grants (list or map, optional) : who gets access to the agent. A list of role names
+--                                       grants USAGE to each; a map of privilege -> roles
+--                                       (e.g. {'usage': [...], 'monitor': [...]}) grants any
+--                                       agent privilege. Prefix a name with 'database role '
+--                                       to grant to a database role.
+--                                       When create_feedback_table=true the USAGE grantees are
 --                                       also granted USAGE on the AGENT_SUBMIT_FEEDBACK
 --                                       procedure, so they can actually call the feedback tool.
+--   revoke_unlisted_grants (bool, optional) : revoke privileges held on the agent by account
+--                                       roles that are not listed in agent_grants, making
+--                                       agent_grants the full definition of access rather than
+--                                       an additive list. Defaults to false.
 --   copy_grants (bool, optional)      : add COPY GRANTS to CREATE OR REPLACE AGENT so grants
 --                                       made on the agent outside of dbt survive a replace
 --                                       (enable_versioning=false, or --full-refresh).
@@ -57,6 +65,7 @@
   {%- set profile                = dbt_cortex_agent.get_package_config('profile', default=none) -%}
   {%- set agent_grants           = dbt_cortex_agent.get_package_config('agent_grants', default=[]) -%}
   {%- set copy_grants            = dbt_cortex_agent.get_package_config('copy_grants', default=true) -%}
+  {%- set revoke_unlisted_grants = dbt_cortex_agent.get_package_config('revoke_unlisted_grants', default=false) -%}
   {%- set create_feedback_table  = dbt_cortex_agent.get_package_config('create_feedback_table', default=false) -%}
   {%- set feedback_schema_config = dbt_cortex_agent.get_package_config('feedback_schema', default=none) -%}
   {%- set feedback_table         = dbt_cortex_agent.get_package_config('feedback_table', default=none) -%}
@@ -177,6 +186,16 @@
 
   {{ run_hooks(post_hooks) }}
 
+  {# Revoke before granting, so a listed grant always ends the run in place. #}
+  {%- if revoke_unlisted_grants %}
+  {%- set _agent_name = target_relation.database ~ '.' ~ target_relation.schema ~ '.' ~ target_relation.identifier -%}
+  {%- for _revoke_sql in dbt_cortex_agent.get_revoke_unlisted_grant_statements('agent', _agent_name, agent_grants, 'agent_grants') %}
+  {% call statement('revoke_' ~ loop.index) %}
+    {{ _revoke_sql }}
+  {% endcall %}
+  {%- endfor %}
+  {%- endif %}
+
   {%- for _grant_sql in dbt_cortex_agent.snowflake__grant_cortex_agent_usage(target_relation, agent_grants) %}
   {% call statement('grant_' ~ loop.index) %}
     {{ _grant_sql }}
@@ -184,7 +203,8 @@
   {%- endfor %}
 
   {%- if create_feedback_table and feedback_table is not none %}
-  {%- for _grant_sql in dbt_cortex_agent.snowflake__grant_feedback_procedure_usage(feedback_db, feedback_schema, agent_grants) %}
+  {%- set _feedback_grantees = dbt_cortex_agent.normalize_grants(agent_grants, 'agent_grants').get('usage', []) -%}
+  {%- for _grant_sql in dbt_cortex_agent.snowflake__grant_feedback_procedure_usage(feedback_db, feedback_schema, _feedback_grantees) %}
   {% call statement('grant_feedback_' ~ loop.index) %}
     {{ _grant_sql }}
   {% endcall %}

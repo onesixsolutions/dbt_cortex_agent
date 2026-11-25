@@ -23,7 +23,14 @@
 --   request_logging (bool, optional)
 --   auto_suspend (int, optional)       : seconds, minimum 1800
 --   comment (string, optional)
---   search_service_grants (list, optional) : role names to grant USAGE on the service
+--   search_service_grants (list or map, optional) : who gets access to the service. A list of
+--                                        role names grants USAGE to each; a map of privilege ->
+--                                        roles grants any search service privilege (usage,
+--                                        monitor, operate). Prefix a name with 'database role '
+--                                        to grant to a database role.
+--   revoke_unlisted_grants (bool, optional) : revoke privileges held on the service by account
+--                                        roles that are not listed in search_service_grants.
+--                                        Defaults to false.
 --
 -- IMPORTANT for consumers: if you change a model away from cortex_search_service
 -- materialization, dbt will attempt DROP VIEW IF EXISTS, which may silently no-op
@@ -45,6 +52,7 @@
   {%- set auto_suspend                   = dbt_cortex_agent.get_package_config('auto_suspend', default=none) -%}
   {%- set comment                        = dbt_cortex_agent.get_package_config('comment', default=none) -%}
   {%- set search_service_grants          = dbt_cortex_agent.get_package_config('search_service_grants', default=[]) -%}
+  {%- set revoke_unlisted_grants         = dbt_cortex_agent.get_package_config('revoke_unlisted_grants', default=false) -%}
 
   {%- if search_column is none %}
     {{ exceptions.raise_compiler_error("cortex_search_service models require a `search_column` config option (the column CORTEX SEARCH SERVICE will index and search over).") }}
@@ -94,6 +102,16 @@
   {%- endif %}
 
   {{ run_hooks(post_hooks) }}
+
+  {# Revoke before granting, so a listed grant always ends the run in place. #}
+  {%- if revoke_unlisted_grants %}
+  {%- set _service_name = target_relation.database ~ '.' ~ target_relation.schema ~ '.' ~ target_relation.identifier -%}
+  {%- for _revoke_sql in dbt_cortex_agent.get_revoke_unlisted_grant_statements('cortex search service', _service_name, search_service_grants, 'search_service_grants') %}
+  {% call statement('revoke_' ~ loop.index) %}
+    {{ _revoke_sql }}
+  {% endcall %}
+  {%- endfor %}
+  {%- endif %}
 
   {%- for _grant_sql in dbt_cortex_agent.snowflake__grant_cortex_search_service_usage(target_relation, search_service_grants) %}
   {% call statement('grant_' ~ loop.index) %}
