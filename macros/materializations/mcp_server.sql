@@ -38,6 +38,7 @@
   ) -%}
 
   {%- do dbt_cortex_agent.warn_if_native_grants('mcp_server_grants') -%}
+  {%- do dbt_cortex_agent.assert_no_dollar_quote(sql, 'mcp_server') -%}
 
   {{ run_hooks(pre_hooks) }}
 
