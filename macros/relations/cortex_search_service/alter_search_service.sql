@@ -39,7 +39,7 @@
     {%- do _statements.append(_prefix ~ 'auto_suspend = ' ~ auto_suspend) -%}
   {%- endif -%}
   {%- if comment is not none -%}
-    {%- do _statements.append(_prefix ~ "comment = '" ~ comment ~ "'") -%}
+    {%- do _statements.append(_prefix ~ "comment = '" ~ dbt_cortex_agent.escape_string_literal(comment) ~ "'") -%}
   {%- endif -%}
   {%- if primary_key is not none and primary_key | length > 0 -%}
     {%- do _statements.append(_prefix ~ 'primary key = (' ~ (primary_key | join(', ')) ~ ')') -%}

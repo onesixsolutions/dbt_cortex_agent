@@ -1,5 +1,5 @@
 name: dbt_cortex_agent_unit_tests
-version: "1.0.0"
+version: "1.1.0"
 config-version: 2
 
 # Offline unit tests for the package's macros. Nothing here connects to Snowflake:

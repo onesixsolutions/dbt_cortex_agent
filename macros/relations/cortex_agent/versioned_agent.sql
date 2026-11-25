@@ -10,10 +10,10 @@
   create agent if not exists
     {{ relation.database }}.{{ relation.schema }}.{{ relation.identifier }}
   {%- if comment is not none %}
-  comment = '{{ comment }}'
+  comment = '{{ dbt_cortex_agent.escape_string_literal(comment) }}'
   {%- endif %}
   {%- if profile is not none %}
-  profile = '{{ profile }}'
+  profile = '{{ dbt_cortex_agent.escape_string_literal(profile) }}'
   {%- endif %}
   from specification
   $$
@@ -57,7 +57,7 @@
     {{ relation.database }}.{{ relation.schema }}.{{ relation.identifier }}
   commit
   {%- if version_comment is not none %}
-  comment = '{{ version_comment }}'
+  comment = '{{ dbt_cortex_agent.escape_string_literal(version_comment) }}'
   {%- endif %}
 
 {% endmacro %}

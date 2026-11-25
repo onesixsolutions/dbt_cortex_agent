@@ -1,6 +1,15 @@
 # dbt_cortex_agent
 
-A custom dbt materialization for deploying [Snowflake Cortex Agents](https://docs.snowflake.com/en/sql-reference/sql/create-agent) using dbt. Define, version, and run Cortex Agents the same way you manage any other dbt model.
+Custom dbt materializations for deploying [Snowflake Cortex Agents](https://docs.snowflake.com/en/sql-reference/sql/create-agent) and the objects around them with dbt. Define, version, grant and test them the same way you manage any other dbt model.
+
+| Materialization | Deploys | Model body |
+|---|---|---|
+| [`cortex_agent`](#usage) | A Cortex Agent, with Snowflake agent versioning | Agent YAML specification |
+| [`mcp_server`](#mcp-servers) | A Snowflake-managed MCP server | MCP server YAML specification |
+| [`cortex_search_service`](#cortex-search-services) | A Cortex Search Service | `SELECT` query |
+| [`cortex_agent_evaluation`](#agent-evaluations) | A Cortex Agent evaluation run configuration | Evaluation YAML |
+
+Works on dbt v1 and dbt v2.
 
 ## Requirements
 
@@ -15,7 +24,7 @@ Add to your project's `packages.yml`:
 ```yaml
 packages:
   - git: "https://github.com/onesixsolutions/dbt_cortex_agent"
-    revision: "1.0.0"
+    revision: "1.1.0"
 ```
 
 Once this package is listed on the [dbt Package Hub](https://hub.getdbt.com/), you'll be able to install it via:
@@ -34,7 +43,7 @@ dbt deps
 
 ## Usage
 
-Create a model file whose **body is the raw Snowflake agent YAML specification**. The materialization wraps it in `CREATE OR REPLACE AGENT ... FROM SPECIFICATION $$ ... $$`.
+Create a model file whose **body is the raw Snowflake agent YAML specification**. The materialization passes it to Snowflake as the agent's `FROM SPECIFICATION $$ ... $$` — creating the agent on the first run and committing a new version of it on later runs (see [Versioning](#versioning)).
 
 ```sql
 -- models/agents/revenue_assistant.sql
@@ -243,6 +252,18 @@ With versioning enabled (default), every `dbt run` preserves history — re-runs
 
 Replacing an agent would normally drop every privilege granted on it. The materialization adds `COPY GRANTS` to `CREATE OR REPLACE AGENT`, so existing grants (other than `OWNERSHIP`) carry over. Set `copy_grants: false` to get a clean slate on each replace, leaving only the roles in `agent_grants`.
 
+## Design Notes and Limitations
+
+These materializations deploy object types dbt has no built-in concept of, so a few things differ from a table or view model:
+
+- **Relation type.** dbt needs every model to be a table or view in its relation cache, so each object is registered as a `view` placeholder. No view is ever created. One consequence: if you later change a model *away* from one of these materializations, dbt will try to drop a view of that name, which does nothing to the agent, server or service — drop it yourself first.
+- **dbt's native `grants` config is not applied.** dbt's built-in grant handling only knows tables and views. Use `agent_grants`, `search_service_grants` or `mcp_server_grants` instead (see [Grants](#grants)); a model that sets the native `grants` config gets a warning.
+- **`persist_docs` is not applied.** Use the `comment` option to describe an agent or search service in Snowflake.
+- **Object names are used unquoted**, as `database.schema.identifier`. Names that need quoting (mixed case, special characters) are not supported.
+- **String options are placed in single-quoted SQL literals.** Apostrophes in `comment`, `profile` and `version_comment` are escaped for you. The YAML body is placed in a `$$ ... $$` block, so it must not itself contain `$$`.
+- **Snowflake does not validate a specification's tools when the object is created.** A misspelled key or a reference to a missing object deploys successfully and only shows up when the tool is used — test the agent after deploying it.
+- **Models sharing a feedback schema share one `AGENT_SUBMIT_FEEDBACK` procedure**, which each of them replaces on every run.
+
 ## Supported Tools in Specification
 
 Built-in tool types (add to the `tools:` section of your spec body):
@@ -252,6 +273,15 @@ Built-in tool types (add to the `tools:` section of your spec body):
 - `generic` — any Snowflake stored procedure or UDF (see [Feedback Tool](#feedback-tool) for an example)
 - `web_search` — web search (must be enabled for the account by an `ACCOUNTADMIN`)
 - `data_to_chart` — chart generation (available by default)
+
+In `tool_resources`, the entry for a `cortex_search` tool names its service with the `search_service` key:
+
+```yaml
+tool_resources:
+  product_search:
+    search_service: '{{ ref("product_search_service") }}'
+    max_results: 10
+```
 
 MCP connectors are configured through the top-level `mcp_servers` key of the spec. Because the body is a passthrough, anything else Snowflake adds to the specification works without a package change.
 
@@ -459,6 +489,11 @@ Notes specific to MCP servers:
 - Like `cortex_agent`, every `dbt run` issues `CREATE OR REPLACE MCP SERVER`, so re-runs are fully idempotent, and Jinja (`{{ ref() }}`, `{{ var() }}`, etc.) works anywhere in the spec.
 - To drop an MCP server explicitly, use the helper macro in a dbt operation or post-hook: `{% do run_query(dbt_cortex_agent.snowflake__get_drop_mcp_server_sql(this)) %}` (or run `DROP MCP SERVER IF EXISTS <db>.<schema>.<name>;` directly).
 
+| Option | Type | Required | Description |
+|---|---|---|---|
+| `materialized` | string | Yes | Must be `'mcp_server'` |
+| `mcp_server_grants` | list or map | No | Who gets access to the server. A list of role names grants `USAGE` to each; a map grants any MCP server privilege. Re-issued after every run. See [Grants](#grants). |
+
 Refer to the [Snowflake CREATE MCP SERVER docs](https://docs.snowflake.com/en/sql-reference/sql/create-mcp-server) for the full and up-to-date specification reference.
 
 ## Cortex Search Services
@@ -639,7 +674,7 @@ Both suites run in CI on dbt v1 and dbt v2. The unit tests run on every pull req
 
 ### Prerequisites
 
-- PowerShell
+- PowerShell, for `scripts/run_tests.ps1` (the integration test runner); the unit test runner `scripts/run_unit_tests.sh` needs a POSIX shell
 - dbt installed in your environment (`pip install dbt-snowflake` for dbt v1, or `pip install dbt` for dbt v2)
 - A Snowflake account with Cortex Agents enabled
 

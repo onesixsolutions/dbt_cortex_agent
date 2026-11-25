@@ -37,6 +37,8 @@
       type='view'
   ) -%}
 
+  {%- do dbt_cortex_agent.warn_if_native_grants('mcp_server_grants') -%}
+
   {{ run_hooks(pre_hooks) }}
 
   {% call statement('main') %}
