@@ -5,9 +5,14 @@
 {%- set profile = '{"display_name": "Bot", "color": "blue"}' -%}
 
 -- CREATE OR REPLACE AGENT
-{{ assert_sql('create: copy grants, comment and profile',
+{#- COPY GRANTS must come after COMMENT and PROFILE: Snowflake rejects it before COMMENT
+    ("unexpected 'comment'"), despite its syntax reference listing it first. -#}
+{{ assert_sql('create: copy grants comes after comment and profile, directly before FROM SPECIFICATION',
     dbt_cortex_agent.snowflake__create_cortex_agent(rel, 'models:\n  orchestration: auto', 'my comment', profile, true),
-    "create or replace agent DB.SCH.OBJ copy grants comment = 'my comment' profile = '" ~ profile ~ "' from specification $$ models: orchestration: auto $$") }}
+    "create or replace agent DB.SCH.OBJ comment = 'my comment' profile = '" ~ profile ~ "' copy grants from specification $$ models: orchestration: auto $$") }}
+{{ assert_sql('create: copy grants after a comment with no profile',
+    dbt_cortex_agent.snowflake__create_cortex_agent(rel, 'a: 1', 'c', none, true),
+    "create or replace agent DB.SCH.OBJ comment = 'c' copy grants from specification $$ a: 1 $$") }}
 {{ assert_sql('create: copy_grants defaults to on',
     dbt_cortex_agent.snowflake__create_cortex_agent(rel, 'a: 1', none, none),
     'create or replace agent DB.SCH.OBJ copy grants from specification $$ a: 1 $$') }}
