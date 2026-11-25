@@ -12,11 +12,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `get_package_config` macro — reads a package option from `meta`, falling back to the top-level config key
 - CI now runs the integration tests on both dbt v1 (`dbt-snowflake`) and dbt v2 (`dbt`)
 
+- `mcp_server_grants` config option for `mcp_server` — list of role names to grant `USAGE` on the MCP server, re-issued after every run
+- `snowflake__grant_mcp_server_usage` macro
+- `copy_grants` config option for `cortex_agent` (default `true`) — adds `COPY GRANTS` to `CREATE OR REPLACE AGENT`
+- `snowflake__grant_feedback_procedure_usage` macro
+
 ### Changed
+- `CREATE OR REPLACE AGENT` (used when `enable_versioning: false` and on `--full-refresh`) now includes `COPY GRANTS`, so privileges granted on the agent outside of `agent_grants` are no longer dropped on each replace. Set `copy_grants: false` for the previous behaviour.
+- `AGENT_SUBMIT_FEEDBACK` is now replaced with `COPY GRANTS`, so grants on the shared procedure survive each run
 - `snowflake__grant_cortex_agent_usage`, `snowflake__grant_cortex_search_service_usage` and `snowflake__alter_cortex_search_service` now return a **list of SQL statements** instead of one `;`-separated string, and the materializations execute each statement on its own. Sending several statements in one call relied on dbt-snowflake's client-side statement splitting, which is not guaranteed on the dbt v2 engine. Only affects projects that call these macros directly.
 - README examples and the integration tests set package options under `meta`
 
 ### Fixed
+- MCP servers lost every grant on each `dbt run`: the server is always replaced, replacing drops all grants, and the materialization had no way to re-issue them. Use `mcp_server_grants`.
+- Roles in `agent_grants` could not call the feedback tool: they were granted `USAGE` on the agent but never on the `AGENT_SUBMIT_FEEDBACK` procedure behind it. They are now granted both.
 - `UnexpectedJinjaBlockDeprecation` warning on dbt Core 1.10+ caused by a `do` tag inside a SQL comment in `drop_mcp_server.sql`
 
 ## [1.0.0] - 2026-08-12

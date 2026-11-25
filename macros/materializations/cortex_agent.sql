@@ -5,7 +5,15 @@
 -- Config options:
 --   comment (string, optional)        : agent-level comment visible in Snowflake
 --   profile (string, optional)        : JSON object with display_name, avatar, and color
---   agent_grants (list, optional)     : list of role names to grant USAGE on the agent
+--   agent_grants (list, optional)     : list of role names to grant USAGE on the agent.
+--                                       When create_feedback_table=true the same roles are
+--                                       also granted USAGE on the AGENT_SUBMIT_FEEDBACK
+--                                       procedure, so they can actually call the feedback tool.
+--   copy_grants (bool, optional)      : add COPY GRANTS to CREATE OR REPLACE AGENT so grants
+--                                       made on the agent outside of dbt survive a replace
+--                                       (enable_versioning=false, or --full-refresh).
+--                                       Defaults to true. The versioned path never replaces
+--                                       the agent, so it keeps grants regardless.
 --   create_feedback_table (bool, optional) : whether to create the feedback table and procedure.
 --                                            Defaults to false. Set to true to enable.
 --   feedback_schema (string, optional) : schema for the feedback table and AGENT_SUBMIT_FEEDBACK
@@ -48,6 +56,7 @@
   {%- set comment                = dbt_cortex_agent.get_package_config('comment', default=none) -%}
   {%- set profile                = dbt_cortex_agent.get_package_config('profile', default=none) -%}
   {%- set agent_grants           = dbt_cortex_agent.get_package_config('agent_grants', default=[]) -%}
+  {%- set copy_grants            = dbt_cortex_agent.get_package_config('copy_grants', default=true) -%}
   {%- set create_feedback_table  = dbt_cortex_agent.get_package_config('create_feedback_table', default=false) -%}
   {%- set feedback_schema_config = dbt_cortex_agent.get_package_config('feedback_schema', default=none) -%}
   {%- set feedback_table         = dbt_cortex_agent.get_package_config('feedback_table', default=none) -%}
@@ -161,7 +170,7 @@
   {%- else %}
 
   {% call statement('main') %}
-    {{ dbt_cortex_agent.snowflake__create_cortex_agent(target_relation, sql, comment, profile) }}
+    {{ dbt_cortex_agent.snowflake__create_cortex_agent(target_relation, sql, comment, profile, copy_grants) }}
   {% endcall %}
 
   {%- endif %}
@@ -173,6 +182,14 @@
     {{ _grant_sql }}
   {% endcall %}
   {%- endfor %}
+
+  {%- if create_feedback_table and feedback_table is not none %}
+  {%- for _grant_sql in dbt_cortex_agent.snowflake__grant_feedback_procedure_usage(feedback_db, feedback_schema, agent_grants) %}
+  {% call statement('grant_feedback_' ~ loop.index) %}
+    {{ _grant_sql }}
+  {% endcall %}
+  {%- endfor %}
+  {%- endif %}
 
   {{ return({'relations': [target_relation]}) }}
 

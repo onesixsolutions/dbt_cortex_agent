@@ -34,7 +34,7 @@ models:
         agent_grants: ['dbt_demo_role']
 
   - name: mcp_server_test
-    description: "Comprehensive MCP server exercising all three tool types — Cortex Search (via var), Cortex Analyst (via ref to test_semantic_view), and SQL execution."
+    description: "Comprehensive MCP server exercising all three tool types — Cortex Search (via var), Cortex Analyst (via ref to test_semantic_view), and SQL execution — plus mcp_server_grants."
     config:
       alias: mcp_server_test
       tags: ['integration']

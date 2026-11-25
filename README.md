@@ -90,7 +90,8 @@ Every option below except `materialized` is a package option: set it under `meta
 | `materialized` | string | Yes | Must be `'cortex_agent'` |
 | `comment` | string | No | Agent description visible in Snowflake |
 | `profile` | string (JSON) | No | `{"display_name": "...", "avatar": "...", "color": "..."}` |
-| `agent_grants` | list | No | Role names to grant `USAGE` on the agent, e.g. `['my_role']` |
+| `agent_grants` | list | No | Role names to grant `USAGE` on the agent, e.g. `['my_role']`. With `create_feedback_table: true` the same roles also get `USAGE` on the `AGENT_SUBMIT_FEEDBACK` procedure. |
+| `copy_grants` | bool | No | Add `COPY GRANTS` to `CREATE OR REPLACE AGENT` so privileges granted on the agent outside of dbt survive a replace. Defaults to `true`. Only relevant when the agent is replaced — `enable_versioning: false` or `dbt run --full-refresh`. |
 | `create_feedback_table` | bool | No | Whether to create the feedback table and procedure. Defaults to `false`. Set to `true` to enable. See [Feedback Tool](#feedback-tool). |
 | `feedback_schema` | string | No | Schema for the feedback table and `AGENT_SUBMIT_FEEDBACK` procedure. Accepts `'SCHEMA'` or `'DB.SCHEMA'`. Defaults to the agent's own database and schema. See [Feedback Tool](#feedback-tool). |
 | `feedback_table` | string | No | Fully-qualified table name override for user feedback. Defaults to `{feedback_schema}.AGENT_FEEDBACK`. Ignored when `create_feedback_table` is `false`. See [Feedback Tool](#feedback-tool). |
@@ -196,6 +197,8 @@ Or per-model:
 ## Idempotency
 
 With versioning enabled (default), every `dbt run` preserves history — re-runs are safe and create a new committed version. With `enable_versioning=false`, every run issues `CREATE OR REPLACE AGENT`. `dbt run --full-refresh` always uses `CREATE OR REPLACE AGENT`, resetting all version history.
+
+Replacing an agent would normally drop every privilege granted on it. The materialization adds `COPY GRANTS` to `CREATE OR REPLACE AGENT`, so existing grants (other than `OWNERSHIP`) carry over. Set `copy_grants: false` to get a clean slate on each replace, leaving only the roles in `agent_grants`.
 
 ## Supported Tools in Specification
 
@@ -305,13 +308,18 @@ By default the procedure runs with `EXECUTE AS CALLER`, so `current_user()` insi
 
 The procedure is recreated on every `dbt run`, so changes to the feedback table schema are picked up automatically. The feedback table uses `CREATE TABLE IF NOT EXISTS`, so existing data is never dropped.
 
+Roles listed in `agent_grants` are granted `USAGE` on the `AGENT_SUBMIT_FEEDBACK` procedure as well as on the agent — `USAGE` on an agent does not by itself let a role call the agent's custom tools. The procedure is replaced with `COPY GRANTS`, so grants issued for other agents sharing the same feedback schema are kept. With `feedback_execute_as: 'caller'` those roles also need `INSERT` on the feedback table, which you grant yourself.
+
 ## MCP Servers
 
 The package also ships an `mcp_server` materialization for deploying [Snowflake-managed MCP servers](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-mcp). It works the same way as `cortex_agent`: the model body is the raw MCP server YAML specification (a `tools:` array), wrapped in `CREATE OR REPLACE MCP SERVER ... FROM SPECIFICATION $$ ... $$`.
 
 ```sql
 -- models/mcp/data_mcp_server.sql
-{{ config(materialized='mcp_server') }}
+{{ config(
+    materialized='mcp_server',
+    meta={'mcp_server_grants': ['mcp_access_role']}
+) }}
 
 tools:
   - name: "product_search"
@@ -352,7 +360,9 @@ DESCRIBE MCP SERVER my_db.my_schema.data_mcp_server;
 Notes specific to MCP servers:
 
 - The `tools` array is required and must contain at least one tool. Supported `type` values include `CORTEX_SEARCH_SERVICE_QUERY`, `CORTEX_ANALYST_MESSAGE`, `CORTEX_AGENT_RUN`, `SYSTEM_EXECUTE_SQL`, and `GENERIC`. Each tool that wraps an existing object needs a fully-qualified `identifier` — use `{{ ref() }}` to wire it into the dbt DAG so the MCP server always runs after its upstream objects.
-- Unlike agents, the MCP server DDL has **no `COMMENT` or `PROFILE` clause**, so the `mcp_server` materialization takes no extra config options — everything lives in the spec body.
+- Unlike agents, the MCP server DDL has **no `COMMENT` or `PROFILE` clause**, so everything except access grants lives in the spec body.
+- **Grants are dropped on every run unless you list them.** Snowflake has no `ALTER MCP SERVER` and no `COPY GRANTS` for MCP servers, so each `dbt run` replaces the server and Snowflake drops every grant on it. Set `mcp_server_grants` (a list of role names) and the materialization re-issues `GRANT USAGE ON MCP SERVER` after each replace. A grant made by hand will not survive the next run.
+- `USAGE` on the server lets a role connect, list tools and call them, but **not** use the objects behind the tools. The role separately needs `USAGE` on each search service, agent, function or procedure, `SELECT` on each semantic view, and `USAGE` on the warehouse.
 - Like `cortex_agent`, every `dbt run` issues `CREATE OR REPLACE MCP SERVER`, so re-runs are fully idempotent, and Jinja (`{{ ref() }}`, `{{ var() }}`, etc.) works anywhere in the spec.
 - To drop an MCP server explicitly, use the helper macro in a dbt operation or post-hook: `{% do run_query(dbt_cortex_agent.snowflake__get_drop_mcp_server_sql(this)) %}` (or run `DROP MCP SERVER IF EXISTS <db>.<schema>.<name>;` directly).
 
