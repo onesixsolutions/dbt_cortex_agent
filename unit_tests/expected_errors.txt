@@ -1,0 +1,6 @@
+# case name | text that must appear in dbt's error output
+# Each case is compiled with --vars '{expect_error: <case name>}' and must make dbt fail.
+grant_ownership|cannot grant OWNERSHIP
+grant_ownership_mixed_case|cannot grant OWNERSHIP
+assertion_helper_detects_mismatch|UNIT TEST FAILED: deliberate mismatch
+assertion_helper_detects_sql_mismatch|UNIT TEST FAILED: deliberate sql mismatch

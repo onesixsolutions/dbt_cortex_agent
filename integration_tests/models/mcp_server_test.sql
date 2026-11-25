@@ -2,7 +2,8 @@
     config(
         materialized='mcp_server',
         alias='mcp_server_test',
-        tags=['integration']
+        tags=['integration'],
+        meta={'mcp_server_grants': ['dbt_demo_role']}
     )
 }}
 

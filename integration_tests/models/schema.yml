@@ -20,24 +20,51 @@ models:
         target_lag: '7 days'
         primary_key: ['id']
         auto_suspend: 1800
-        comment: 'Full integration test search service — exercises every config option'
+        # `comment` is set in the model's config() only: it changes on a second run, which
+        # cortex_search_service_test_alter_applied uses to prove the ALTER path works.
         search_service_grants: ['dbt_demo_role']
 
   - name: cortex_agent_test
-    description: "Comprehensive agent exercising every config and spec option — comment, profile, alias, tags, orchestration budget, all instruction fields, both tool types with full input_schema, tool_resources, and grants."
+    description: "Comprehensive agent exercising every config and spec option — comment, profile, alias, tags, orchestration budget, all instruction fields, both tool types with full input_schema, tool_resources, and grants (privilege-map form of agent_grants)."
     config:
       alias: cortex_agent_test
       tags: ['integration']
       meta:
         comment: 'Full integration test agent — exercises every config and spec option'
         profile: '{"display_name": "Full Test Agent", "avatar": "robot", "color": "blue"}'
-        agent_grants: ['dbt_demo_role']
+        agent_grants:
+          usage: ['dbt_demo_role']
+          monitor: dbt_demo_role
 
   - name: mcp_server_test
-    description: "Comprehensive MCP server exercising all three tool types — Cortex Search (via var), Cortex Analyst (via ref to test_semantic_view), and SQL execution."
+    description: "Comprehensive MCP server exercising all three tool types — Cortex Search (via var), Cortex Analyst (via ref to test_semantic_view), and SQL execution — plus mcp_server_grants."
     config:
       alias: mcp_server_test
       tags: ['integration']
+
+  - name: cortex_agent_revoke_test
+    description: "Agent with revoke_unlisted_grants=true and a post-hook that plants an unlisted MONITOR grant, to prove the materialization revokes it while keeping the listed USAGE grant."
+
+  - name: cortex_agent_copy_grants_test
+    description: "Non-versioned agent whose post-hook grants MONITOR on a first run only, to prove COPY GRANTS carries the grant across CREATE OR REPLACE AGENT on a second run."
+
+  - name: cortex_agent_test_grants
+    description: "Captures SHOW GRANTS ON AGENT for cortex_agent_test (privilege-map form of agent_grants)."
+
+  - name: cortex_agent_revoke_test_grants
+    description: "Captures SHOW GRANTS ON AGENT for cortex_agent_revoke_test."
+
+  - name: cortex_agent_copy_grants_test_grants
+    description: "Captures SHOW GRANTS ON AGENT for cortex_agent_copy_grants_test."
+
+  - name: mcp_server_test_grants
+    description: "Captures SHOW GRANTS ON MCP SERVER for mcp_server_test."
+
+  - name: test_search_service_grants
+    description: "Captures SHOW GRANTS ON CORTEX SEARCH SERVICE for test_search_service."
+
+  - name: feedback_procedure_grants
+    description: "Captures SHOW GRANTS ON PROCEDURE for the AGENT_SUBMIT_FEEDBACK procedure created by cortex_agent_test."
 
   - name: cortex_agent_versioned_test_versions
     description: "Captures SHOW VERSIONS IN AGENT output for cortex_agent_versioned_test so singular tests can assert on committed version count."

@@ -11,12 +11,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - dbt v2 support. The dbt v2 engine rejects config keys it does not know (`Ignored unexpected key`, dbt1060), which made every model using a package option fail to parse. All package options can now be set under `meta` — e.g. `config(materialized='cortex_agent', meta={'comment': '...', 'agent_grants': [...]})` — which works on dbt v1 and v2. Top-level keys keep working on dbt v1, so existing projects are unaffected until they upgrade. When an option is set in both places the `meta` value wins.
 - `get_package_config` macro — reads a package option from `meta`, falling back to the top-level config key
 - CI now runs the integration tests on both dbt v1 (`dbt-snowflake`) and dbt v2 (`dbt`)
+- Offline macro unit tests in `unit_tests/`, run with `scripts/run_unit_tests.sh` on dbt v1 and v2 without a Snowflake connection, and in CI on every pull request
+- Integration tests for grants on agents, MCP servers, search services and the feedback procedure; for `revoke_unlisted_grants`; for `COPY GRANTS` across a replace; for the search service ALTER path; and for version increments on a second run
+- CI runs the integration models twice (the second time with `--vars '{second_run: true}'`) so the ALTER, second-version and `COPY GRANTS` paths are exercised
+
+- `mcp_server_grants` config option for `mcp_server` — list of role names to grant `USAGE` on the MCP server, re-issued after every run
+- `snowflake__grant_mcp_server_usage` macro
+- `copy_grants` config option for `cortex_agent` (default `true`) — adds `COPY GRANTS` to `CREATE OR REPLACE AGENT`
+- `snowflake__grant_feedback_procedure_usage` macro
+- `agent_grants`, `search_service_grants` and `mcp_server_grants` now also accept a map of privilege to roles (e.g. `{'usage': ['analyst_role'], 'monitor': ['ops_role']}`), so privileges other than `USAGE` — `MONITOR`, `MODIFY`, `OPERATE` — can be managed. The list form still grants `USAGE`.
+- Database roles as grantees: prefix the name with `database role `, e.g. `'database role ANALYTICS.AGENT_READER'`
+- `revoke_unlisted_grants` config option for `cortex_agent` and `cortex_search_service` (default `false`) — revokes privileges held by account roles that the grants option does not list, making it the full definition of access instead of an additive list
+- `normalize_grants`, `grantee_clause`, `get_grant_statements`, `get_revoke_unlisted_grant_statements` and `get_revoke_statements_for_rows` macros
 
 ### Changed
+- `CREATE OR REPLACE AGENT` (used when `enable_versioning: false` and on `--full-refresh`) now includes `COPY GRANTS`, so privileges granted on the agent outside of `agent_grants` are no longer dropped on each replace. Set `copy_grants: false` for the previous behaviour.
+- `AGENT_SUBMIT_FEEDBACK` is now replaced with `COPY GRANTS`, so grants on the shared procedure survive each run
 - `snowflake__grant_cortex_agent_usage`, `snowflake__grant_cortex_search_service_usage` and `snowflake__alter_cortex_search_service` now return a **list of SQL statements** instead of one `;`-separated string, and the materializations execute each statement on its own. Sending several statements in one call relied on dbt-snowflake's client-side statement splitting, which is not guaranteed on the dbt v2 engine. Only affects projects that call these macros directly.
 - README examples and the integration tests set package options under `meta`
 
+### Documentation
+- README reviewed against the current Snowflake documentation: new [Required Privileges](README.md#required-privileges) section covering what the deploying role and consuming roles need beyond the object grant; a section for the previously undocumented `cortex_agent_evaluation` materialization, including the `dataset`-block re-run caveat, `agent_version`, metric version pinning and the privileges needed to start a run; current MCP server tool types (`CODING_AGENT`, `tool_config`, `annotations`); current agent tool types and the `tool_not_accessible` setting; and a note on Snowflake's native feedback endpoint
+
 ### Fixed
+- Existence checks for agents and search services could match the wrong object. `SHOW ... LIKE '<name>'` treats `_` as a single-character wildcard, so e.g. `SALES_AGENT` also matched `SALESXAGENT`, sending the materialization down the ALTER path for an object that did not exist. The returned name is now compared exactly (`find_show_row` macro).
+- `cortex_search_service` now warns when `search_column` or `embedding_model` in the model config no longer matches the deployed service. These are fixed at creation and were silently ignored on the ALTER path.
+- Agent LIVE-version detection also recognises a `SHOW VERSIONS` row named `LIVE`, not only a row with an empty name
+- MCP servers lost every grant on each `dbt run`: the server is always replaced, replacing drops all grants, and the materialization had no way to re-issue them. Use `mcp_server_grants`.
+- Roles in `agent_grants` could not call the feedback tool: they were granted `USAGE` on the agent but never on the `AGENT_SUBMIT_FEEDBACK` procedure behind it. They are now granted both.
 - `UnexpectedJinjaBlockDeprecation` warning on dbt Core 1.10+ caused by a `do` tag inside a SQL comment in `drop_mcp_server.sql`
 
 ## [1.0.0] - 2026-08-12

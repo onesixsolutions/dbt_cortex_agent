@@ -10,6 +10,13 @@
 -- full_index_build_interval_days, attributes, primary_key) are updated in place via
 -- ALTER ... SET, so the search index is never gratuitously rebuilt.
 --
+-- Properties fixed at creation (search_column, embedding_model, refresh_mode, initialize and
+-- the defining query) are NOT applied on the ALTER path. A changed search_column or
+-- embedding_model is detected and reported as a warning; a changed query, refresh_mode or
+-- initialize cannot be detected (Snowflake does not expose them in a comparable form), so
+-- after editing any of those run `dbt run --full-refresh`. Note that a replace leaves the
+-- service unable to answer queries until the new index has finished building.
+--
 -- Config options:
 --   search_column (string, required)   : column CORTEX SEARCH SERVICE indexes and searches over
 --   attributes (list, required)        : non-empty list of filterable/returnable column names
@@ -23,7 +30,14 @@
 --   request_logging (bool, optional)
 --   auto_suspend (int, optional)       : seconds, minimum 1800
 --   comment (string, optional)
---   search_service_grants (list, optional) : role names to grant USAGE on the service
+--   search_service_grants (list or map, optional) : who gets access to the service. A list of
+--                                        role names grants USAGE to each; a map of privilege ->
+--                                        roles grants any search service privilege (usage,
+--                                        monitor, operate). Prefix a name with 'database role '
+--                                        to grant to a database role.
+--   revoke_unlisted_grants (bool, optional) : revoke privileges held on the service by account
+--                                        roles that are not listed in search_service_grants.
+--                                        Defaults to false.
 --
 -- IMPORTANT for consumers: if you change a model away from cortex_search_service
 -- materialization, dbt will attempt DROP VIEW IF EXISTS, which may silently no-op
@@ -45,6 +59,7 @@
   {%- set auto_suspend                   = dbt_cortex_agent.get_package_config('auto_suspend', default=none) -%}
   {%- set comment                        = dbt_cortex_agent.get_package_config('comment', default=none) -%}
   {%- set search_service_grants          = dbt_cortex_agent.get_package_config('search_service_grants', default=[]) -%}
+  {%- set revoke_unlisted_grants         = dbt_cortex_agent.get_package_config('revoke_unlisted_grants', default=false) -%}
 
   {%- if search_column is none %}
     {{ exceptions.raise_compiler_error("cortex_search_service models require a `search_column` config option (the column CORTEX SEARCH SERVICE will index and search over).") }}
@@ -71,9 +86,28 @@
     SHOW CORTEX SEARCH SERVICES LIKE '{{ target_relation.identifier }}' IN SCHEMA {{ target_relation.database }}.{{ target_relation.schema }}
   {%- endset -%}
   {%- set _service_rows = run_query(_show_services_sql) -%}
-  {%- set _service_exists = (_service_rows | length) > 0 -%}
+  {#- Match the name exactly: LIKE treats `_` as a wildcard, so the SHOW can return a
+      different service whose name merely fits the pattern. -#}
+  {%- set _service_row = dbt_cortex_agent.find_show_row(_service_rows.rows, target_relation.identifier) -%}
+  {%- set _service_exists = _service_row is not none -%}
 
   {%- if _service_exists and not should_full_refresh() %}
+
+  {# The ALTER path cannot change properties that are fixed at creation. Rather than let a
+     config edit be ignored silently, warn when the deployed service no longer matches. #}
+  {%- set _deployed_embedding_model = none -%}
+  {%- if embedding_model is not none -%}
+    {%- set _describe_sql -%}
+      DESCRIBE CORTEX SEARCH SERVICE {{ target_relation.database }}.{{ target_relation.schema }}.{{ target_relation.identifier }}
+    {%- endset -%}
+    {%- set _describe_rows = run_query(_describe_sql).rows -%}
+    {%- if _describe_rows | length > 0 -%}
+      {%- set _deployed_embedding_model = _describe_rows[0]['embedding_model'] -%}
+    {%- endif -%}
+  {%- endif -%}
+  {%- for _message in dbt_cortex_agent.get_search_service_immutable_drift(target_relation, search_column, embedding_model, _service_row['search_column'], _deployed_embedding_model) -%}
+    {%- do exceptions.warn(_message) -%}
+  {%- endfor %}
 
   {# One statement per property. dbt's materialization framework requires a statement named
      'main', so the last ALTER takes that name. The list is never empty: target_lag,
@@ -94,6 +128,16 @@
   {%- endif %}
 
   {{ run_hooks(post_hooks) }}
+
+  {# Revoke before granting, so a listed grant always ends the run in place. #}
+  {%- if revoke_unlisted_grants %}
+  {%- set _service_name = target_relation.database ~ '.' ~ target_relation.schema ~ '.' ~ target_relation.identifier -%}
+  {%- for _revoke_sql in dbt_cortex_agent.get_revoke_unlisted_grant_statements('cortex search service', _service_name, search_service_grants, 'search_service_grants') %}
+  {% call statement('revoke_' ~ loop.index) %}
+    {{ _revoke_sql }}
+  {% endcall %}
+  {%- endfor %}
+  {%- endif %}
 
   {%- for _grant_sql in dbt_cortex_agent.snowflake__grant_cortex_search_service_usage(target_relation, search_service_grants) %}
   {% call statement('grant_' ~ loop.index) %}

@@ -4,9 +4,24 @@
 -- CREATE OR REPLACE MCP SERVER ... FROM SPECIFICATION $$ ... $$.
 --
 -- Unlike Cortex Agents, MCP servers expose no COMMENT or PROFILE clause in their
--- DDL, so this materialization takes no extra config options beyond the spec body.
+-- DDL, so the spec body carries everything except access grants.
+--
+-- Config options:
+--   mcp_server_grants (list or map, optional) : who gets access to the MCP server. A list of
+--                                        role names grants USAGE to each; a map of privilege ->
+--                                        roles grants any MCP server privilege (usage, modify).
+--                                        Prefix a name with 'database role ' to grant to a
+--                                        database role.
+--
+-- Grants: Snowflake has no ALTER MCP SERVER, so every run is a CREATE OR REPLACE, and
+-- replacing a server DROPS EVERY GRANT on it (there is no COPY GRANTS clause for MCP
+-- servers). Any USAGE granted by hand is therefore gone after the next `dbt run`. List the
+-- roles in `mcp_server_grants` and the materialization re-issues the grants straight after
+-- each replace.
 
 {% materialization mcp_server, adapter='snowflake' %}
+
+  {%- set mcp_server_grants = dbt_cortex_agent.get_package_config('mcp_server_grants', default=[]) -%}
 
   -- dbt has no native 'mcp server' relation type. 'view' is used as a placeholder
   -- for graph tracking only — the actual DDL is always CREATE OR REPLACE MCP SERVER.
@@ -29,6 +44,12 @@
   {% endcall %}
 
   {{ run_hooks(post_hooks) }}
+
+  {%- for _grant_sql in dbt_cortex_agent.snowflake__grant_mcp_server_usage(target_relation, mcp_server_grants) %}
+  {% call statement('grant_' ~ loop.index) %}
+    {{ _grant_sql }}
+  {% endcall %}
+  {%- endfor %}
 
   {{ return({'relations': [target_relation]}) }}
 

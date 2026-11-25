@@ -5,7 +5,23 @@
 -- Config options:
 --   comment (string, optional)        : agent-level comment visible in Snowflake
 --   profile (string, optional)        : JSON object with display_name, avatar, and color
---   agent_grants (list, optional)     : list of role names to grant USAGE on the agent
+--   agent_grants (list or map, optional) : who gets access to the agent. A list of role names
+--                                       grants USAGE to each; a map of privilege -> roles
+--                                       (e.g. {'usage': [...], 'monitor': [...]}) grants any
+--                                       agent privilege. Prefix a name with 'database role '
+--                                       to grant to a database role.
+--                                       When create_feedback_table=true the USAGE grantees are
+--                                       also granted USAGE on the AGENT_SUBMIT_FEEDBACK
+--                                       procedure, so they can actually call the feedback tool.
+--   revoke_unlisted_grants (bool, optional) : revoke privileges held on the agent by account
+--                                       roles that are not listed in agent_grants, making
+--                                       agent_grants the full definition of access rather than
+--                                       an additive list. Defaults to false.
+--   copy_grants (bool, optional)      : add COPY GRANTS to CREATE OR REPLACE AGENT so grants
+--                                       made on the agent outside of dbt survive a replace
+--                                       (enable_versioning=false, or --full-refresh).
+--                                       Defaults to true. The versioned path never replaces
+--                                       the agent, so it keeps grants regardless.
 --   create_feedback_table (bool, optional) : whether to create the feedback table and procedure.
 --                                            Defaults to false. Set to true to enable.
 --   feedback_schema (string, optional) : schema for the feedback table and AGENT_SUBMIT_FEEDBACK
@@ -48,6 +64,8 @@
   {%- set comment                = dbt_cortex_agent.get_package_config('comment', default=none) -%}
   {%- set profile                = dbt_cortex_agent.get_package_config('profile', default=none) -%}
   {%- set agent_grants           = dbt_cortex_agent.get_package_config('agent_grants', default=[]) -%}
+  {%- set copy_grants            = dbt_cortex_agent.get_package_config('copy_grants', default=true) -%}
+  {%- set revoke_unlisted_grants = dbt_cortex_agent.get_package_config('revoke_unlisted_grants', default=false) -%}
   {%- set create_feedback_table  = dbt_cortex_agent.get_package_config('create_feedback_table', default=false) -%}
   {%- set feedback_schema_config = dbt_cortex_agent.get_package_config('feedback_schema', default=none) -%}
   {%- set feedback_table         = dbt_cortex_agent.get_package_config('feedback_table', default=none) -%}
@@ -98,7 +116,9 @@
 
   {# Inspect existing versions to decide whether LIVE needs (re)creating.
      SHOW VERSIONS returns one row per committed version (name = VERSION$N) plus, when a
-     LIVE working copy exists, one row with an empty name.
+     LIVE working copy exists, one row for it. That row has been observed with an empty name;
+     Snowflake's docs refer to the working copy as LIVE, so a row named LIVE is treated the
+     same way in case the output changes to match.
        - no committed versions  : first run — LIVE does not exist yet, skip ADD LIVE VERSION.
        - committed, no LIVE     : the normal steady state after COMMIT consumed LIVE — restore it.
        - committed, LIVE exists : ADD LIVE VERSION would fail with 099106 ("There is already a
@@ -110,16 +130,19 @@
   {%- endset -%}
   {%- set _agent_rows = run_query(_show_agents_sql) -%}
   {%- set _ns = namespace(has_committed=false, has_live=false) -%}
-  {%- if _agent_rows | length > 0 -%}
+  {#- Match the name exactly: LIKE treats `_` as a wildcard, so the SHOW can return a
+      different agent whose name merely fits the pattern. -#}
+  {%- if dbt_cortex_agent.find_show_row(_agent_rows.rows, target_relation.identifier) is not none -%}
     {%- set _show_versions_sql -%}
       SHOW VERSIONS IN AGENT {{ target_relation.database }}.{{ target_relation.schema }}.{{ target_relation.identifier }}
     {%- endset -%}
     {%- set _version_rows = run_query(_show_versions_sql) -%}
     {%- for _r in _version_rows.rows -%}
-      {%- if _r['name'] -%}
-        {%- set _ns.has_committed = true -%}
-      {%- else -%}
+      {%- set _version_name = (_r['name'] or '') | string | trim -%}
+      {%- if _version_name == '' or (_version_name | upper) == 'LIVE' -%}
         {%- set _ns.has_live = true -%}
+      {%- else -%}
+        {%- set _ns.has_committed = true -%}
       {%- endif -%}
     {%- endfor -%}
   {%- endif -%}
@@ -161,18 +184,37 @@
   {%- else %}
 
   {% call statement('main') %}
-    {{ dbt_cortex_agent.snowflake__create_cortex_agent(target_relation, sql, comment, profile) }}
+    {{ dbt_cortex_agent.snowflake__create_cortex_agent(target_relation, sql, comment, profile, copy_grants) }}
   {% endcall %}
 
   {%- endif %}
 
   {{ run_hooks(post_hooks) }}
 
+  {# Revoke before granting, so a listed grant always ends the run in place. #}
+  {%- if revoke_unlisted_grants %}
+  {%- set _agent_name = target_relation.database ~ '.' ~ target_relation.schema ~ '.' ~ target_relation.identifier -%}
+  {%- for _revoke_sql in dbt_cortex_agent.get_revoke_unlisted_grant_statements('agent', _agent_name, agent_grants, 'agent_grants') %}
+  {% call statement('revoke_' ~ loop.index) %}
+    {{ _revoke_sql }}
+  {% endcall %}
+  {%- endfor %}
+  {%- endif %}
+
   {%- for _grant_sql in dbt_cortex_agent.snowflake__grant_cortex_agent_usage(target_relation, agent_grants) %}
   {% call statement('grant_' ~ loop.index) %}
     {{ _grant_sql }}
   {% endcall %}
   {%- endfor %}
+
+  {%- if create_feedback_table and feedback_table is not none %}
+  {%- set _feedback_grantees = dbt_cortex_agent.normalize_grants(agent_grants, 'agent_grants').get('usage', []) -%}
+  {%- for _grant_sql in dbt_cortex_agent.snowflake__grant_feedback_procedure_usage(feedback_db, feedback_schema, _feedback_grantees) %}
+  {% call statement('grant_feedback_' ~ loop.index) %}
+    {{ _grant_sql }}
+  {% endcall %}
+  {%- endfor %}
+  {%- endif %}
 
   {{ return({'relations': [target_relation]}) }}
 

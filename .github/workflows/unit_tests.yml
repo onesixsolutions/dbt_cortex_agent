@@ -1,0 +1,42 @@
+name: Unit Tests
+
+# Offline macro unit tests (unit_tests/). No Snowflake connection or secrets are used, so
+# this runs on every pull request, whatever branch it targets.
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  unit-tests:
+    name: unit-tests (${{ matrix.dbt.name }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        dbt:
+          - name: dbt v1
+            # dbt Core opens a connection on compile; DuckDB gives it an in-memory one.
+            package: dbt-core dbt-duckdb
+          - name: dbt v2
+            package: dbt
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ${{ matrix.dbt.name }}
+        run: pip install ${{ matrix.dbt.package }}
+
+      - name: Print dbt version
+        run: dbt --version
+
+      - name: Run macro unit tests
+        run: ./scripts/run_unit_tests.sh
